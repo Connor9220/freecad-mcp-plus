@@ -3,7 +3,7 @@
 # SPDX-FileNotice: Part of MCP+.
 
 # 2.5D regression job on the flat test plate (flat-test-plate.FCStd, built by flat_model.py),
-# entirely through the GUI, on the 3-axis "NibblerBOT" machine: the TWP suite's operations
+# entirely through the GUI, on the configured 3-axis machine (SETUP.machine): the TWP suite's operations
 # with no work planes, to compare output between builds (main vs a work-plane PR).
 #
 #   import guidriver.cam.recipes.flat_job as r; log = r.run(doc)
@@ -14,13 +14,14 @@ import Draft
 import FreeCAD
 import FreeCADGui
 import guidriver.cam as cd
+from guidriver.cam.recipes import SETUP
 from PySide import QtCore
 
 M = cd.modal
 V = FreeCAD.Vector
 
-MACHINE = "NibblerBOT"
-TOOLS = [42, 31, 30, 103, 10]
+MACHINE = SETUP.machine
+TOOLS = SETUP.tools_flat
 PRESETS = {
     42: "Hardwood Rough",
     31: "Hardwood Pocket",
@@ -60,7 +61,7 @@ def run(doc=None, post=True, outdir=None):
     # ---- Job
     step(
         "CAM_Job",
-        cd.run("CAM_Job", modal=[M.job_create(["2.5D Test Plate"], "NibblerBOT")]),
+        cd.run("CAM_Job", modal=[M.job_create(["2.5D Test Plate"], SETUP.template)]),
     )
     job = doc.getObject("Job")
     p = cd.panel()
@@ -75,7 +76,7 @@ def run(doc=None, post=True, outdir=None):
     p.click("btnMaterial", modal=[M.stock_material(HARDWOOD)])
     p.click(
         "toolControllerAdd",
-        modal=[M.toolbit_selector(TOOLS, "NibblerBOT"), M.input_int()],
+        modal=[M.toolbit_selector(TOOLS, SETUP.library), M.input_int()],
     )
     p.select_rows("toolControllerList", ["5mm Endmill"])
     p.click("toolControllerDelete")

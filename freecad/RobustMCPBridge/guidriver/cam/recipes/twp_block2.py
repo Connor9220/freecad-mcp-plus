@@ -3,7 +3,7 @@
 # SPDX-FileNotice: Part of MCP+.
 
 # CAM job on TWP Test Block 2 (twp-test-block2.FCStd, inches), through the GUI
-# commands, on the "NibblerBOT AC Trunnion" machine: top + four work planes
+# commands, on the configured trunnion machine (SETUP.machine_5x): top + four work planes
 # (+X 25 deg, -X 35 deg, +Y 40 deg, front 90 deg), each faced, pocketed and
 # drilled; outside profile last. No adaptive, no tabs (tape workholding).
 #
@@ -16,13 +16,14 @@ import math
 import FreeCAD
 import FreeCADGui
 import guidriver.cam as cd
+from guidriver.cam.recipes import SETUP
 from guidriver.cam.recipes.twp_block import _cyl, _faces, _largest, _plane, _settle
 
 M = cd.modal
 V = FreeCAD.Vector
 
-MACHINE = "NibblerBOT AC Trunnion"
-TOOLS = [42, 31, 103]
+MACHINE = SETUP.machine_5x
+TOOLS = SETUP.tools_twp2
 PRESETS = {42: "Hardwood Rough", 31: "Hardwood Pocket", 103: "Hardwood Drill"}
 TC = {
     42: 'TC: 1/2" 2FL COMP End Mill NACRO 1.500 loc 4.000 oal',
@@ -76,7 +77,7 @@ def run(doc=None, upto=None, job_only=False):
     # ---- Job
     step(
         "CAM_Job",
-        cd.run("CAM_Job", modal=[M.job_create(["TWP Test Block 2"], "NibblerBOT")]),
+        cd.run("CAM_Job", modal=[M.job_create(["TWP Test Block 2"], SETUP.template)]),
     )
     job = doc.getObject("Job")
     p = cd.panel()
@@ -93,7 +94,7 @@ def run(doc=None, upto=None, job_only=False):
     p.click("btnMaterial", modal=[M.stock_material(HARDWOOD)])
     p.click(
         "toolControllerAdd",
-        modal=[M.toolbit_selector(TOOLS, "NibblerBOT"), M.input_int()],
+        modal=[M.toolbit_selector(TOOLS, SETUP.library), M.input_int()],
     )
     p.select_rows("toolControllerList", ["5mm Endmill"])
     p.click("toolControllerDelete")

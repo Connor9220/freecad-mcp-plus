@@ -3,7 +3,7 @@
 # SPDX-FileNotice: Part of MCP+.
 
 # CAM job on the TWP test block (twp-test-block.FCStd, built by twp_model.py),
-# entirely through the GUI, on the "NibblerBOT AC Trunnion" machine.
+# entirely through the GUI, on the configured trunnion machine (SETUP.machine_5x).
 #
 #   import guidriver.cam.recipes.twp_block as r; log = r.run(doc, upto=6)
 #
@@ -13,13 +13,14 @@
 import FreeCAD
 import FreeCADGui
 import guidriver.cam as cd
+from guidriver.cam.recipes import SETUP
 from PySide import QtCore
 
 M = cd.modal
 V = FreeCAD.Vector
 
-MACHINE = "NibblerBOT AC Trunnion"
-TOOLS = [42, 31, 30, 103, 102]
+MACHINE = SETUP.machine_5x
+TOOLS = SETUP.tools_twp
 PRESETS = {
     42: "Hardwood Rough",
     31: "Hardwood Pocket",
@@ -93,7 +94,7 @@ def run(doc=None, upto=6):
     # ---- Job
     step(
         "CAM_Job",
-        cd.run("CAM_Job", modal=[M.job_create(["TWP Test Block"], "NibblerBOT")]),
+        cd.run("CAM_Job", modal=[M.job_create(["TWP Test Block"], SETUP.template)]),
     )
     job = doc.getObject("Job")
     p = cd.panel()
@@ -110,7 +111,7 @@ def run(doc=None, upto=6):
     p.click("btnMaterial", modal=[M.stock_material(HARDWOOD)])
     p.click(
         "toolControllerAdd",
-        modal=[M.toolbit_selector(TOOLS, "NibblerBOT"), M.input_int()],
+        modal=[M.toolbit_selector(TOOLS, SETUP.library), M.input_int()],
     )
     p.select_rows("toolControllerList", ["5mm Endmill"])
     p.click("toolControllerDelete")

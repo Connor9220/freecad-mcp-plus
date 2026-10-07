@@ -11,6 +11,7 @@
 
 import FreeCAD
 import guidriver.cam as cd
+from guidriver.cam.recipes import SETUP
 from PySide import QtCore
 
 M = cd.modal
@@ -32,8 +33,8 @@ def run(doc=None, stop_before_post=False, copy_dressups=True, machine=None):
             QtCore.QCoreApplication.sendPostedEvents(None, 0)
         return result
 
-    # Job: model + NibblerBOT template
-    step("CAM_Job", cd.run("CAM_Job", modal=[M.job_create(["Body"], "NibblerBOT")]))
+    # Job: model + the configured job template
+    step("CAM_Job", cd.run("CAM_Job", modal=[M.job_create(["Body"], SETUP.template)]))
     job = doc.getObject("Job")
     p = cd.panel()
     step(
@@ -74,7 +75,7 @@ def run(doc=None, stop_before_post=False, copy_dressups=True, machine=None):
         "add tools",
         p.click(
             "toolControllerAdd",
-            modal=[M.toolbit_selector([70, 31, 41], "NibblerBOT"), M.input_int()],
+            modal=[M.toolbit_selector(SETUP.tools_tray, SETUP.library), M.input_int()],
         ),
     )
     p.select_rows("toolControllerList", ["5mm Endmill"])

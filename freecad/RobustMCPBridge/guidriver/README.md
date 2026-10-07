@@ -40,9 +40,14 @@ Recipes:
 - `class_tray.run(doc, copy_dressups=True, machine=None, stop_before_post=False)` on a fresh copy of
   `class-tray.FCStd`. `copy_dressups=False`: the finish pass copies only the Profile op and gets its own
   Lead In/Out. `machine="NibblerBOT"`: picks the Job machine, so posting goes through the machine post.
-- `twp_block.run(doc, upto=N)` on a fresh copy of `twp-test-block.FCStd`: Job on "NibblerBOT AC Trunnion",
+- `twp_block.run(doc, upto=N)` on a fresh copy of `twp-test-block.FCStd`: Job on the trunnion machine,
   stock, tools with presets, four work planes, then the first N operations. Saves after every step.
-Both need the NibblerBOT job template, tool library and machine files (see the kit's `assets/`).
+
+The recipes were recorded on one shop's setup (NibblerBOT). Point them at yours with environment
+variables, read when a recipe is imported (the older `CAMDRIVER_*` names still work):
+`GUIDRIVER_TEMPLATE` (Job template), `GUIDRIVER_LIBRARY` (tool library), `GUIDRIVER_MACHINE` (3-axis machine),
+`GUIDRIVER_MACHINE_5X` (trunnion machine), and `GUIDRIVER_TOOLS_TRAY` / `_TWP` / `_TWP2` / `_FLAT`
+(comma-separated tool numbers). See `cam/recipes/__init__.py`.
 
 Ready-made CAM dialog rules: `job_create`, `tc_chooser`, `toolbit_selector`, `input_int`,
 `stock_material`, `tc_editor` (+ F&S wizard), `feeds_speeds`, `message_box`, `nibblerbot_post`.
