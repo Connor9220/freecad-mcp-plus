@@ -371,11 +371,14 @@ FREECAD_MODE=embedded freecad-mcp
 
 The Robust MCP Server provides **150+ tools** organized into categories. Tools marked with **GUI** require FreeCAD to be running in GUI mode; they will return an error in headless mode.
 
-#### Execution & Debugging (5 tools)
+#### Execution & Debugging (8 tools)
 
 | Tool                         | Description                                                   | Mode |
 | ---------------------------- | ------------------------------------------------------------- | ---- |
 | `execute_python`             | Execute arbitrary Python code in FreeCAD's context            | All  |
+| `execute_python_file`        | Run a .py file as `__main__`, with `__file__` set             | All  |
+| `get_output_page`            | Read a run that outlasted its timeout, page by page           | All  |
+| `bridge_status`              | What FreeCAD is busy with; answers even when FreeCAD is stuck | All  |
 | `get_freecad_version`        | Get FreeCAD version, build date, and Python version           | All  |
 | `get_connection_status`      | Check MCP bridge connection status and latency                | All  |
 | `get_console_output`         | Get recent FreeCAD console output (up to N lines)             | All  |
@@ -506,6 +509,32 @@ The Robust MCP Server provides **150+ tools** organized into categories. Tools m
 | -------------------------- | ------------------------------------- | ---- |
 | `list_parts_library`       | List parts in FreeCAD's parts library | All  |
 | `insert_part_from_library` | Insert a part from the library        | All  |
+
+#### CAM review and testing (11 tools)
+
+Tools for reviewing and testing CAM (Path) changes. "Local" tools run on the machine of the MCP
+server (headless FreeCADCmd, file comparisons) and don't need the bridge.
+
+| Tool                | Description                                                                 | Mode  |
+| ------------------- | --------------------------------------------------------------------------- | ----- |
+| `cam_path_stats`    | Counts, cut/rapid length, Z levels, link heights, upward feeds of an op     | All   |
+| `cam_ab`            | Run a probe against two git refs of the CAM code and compare the results    | Local |
+| `cam_find_geometry` | Find faces and edges by normal, height or radius                            | All   |
+| `cam_fixture`       | Build a test Job with stock, tool controller and operation                  | All   |
+| `cam_post`          | Post a job; upload, username and remote dialogs are cancelled               | All   |
+| `cam_gcode_diff`    | Compare two G-code outputs                                                  | Local |
+| `cam_gouge_check`   | Sweep the tool along link moves and report gouges                           | All   |
+| `cam_coverage`      | Grid check of the material an operation leaves uncut                        | All   |
+| `cam_tests`         | Run CAM unit tests, optionally against a baseline tree                      | Local |
+| `fc_eval`           | Run a script in headless FreeCADCmd and return its real exit code           | Local |
+| `cam_record_demo`   | Record a captioned GUI demo on an off-screen display                        | GUI   |
+
+#### GUI health (2 tools)
+
+| Tool         | Description                                                                    | Mode |
+| ------------ | ------------------------------------------------------------------------------ | ---- |
+| `gui_health` | Open panels, stray dialogs, active document, new Report-view errors           | GUI  |
+| `gui_reset`  | Close stray panels and dialogs; gets in even while a run is stuck on a dialog | GUI  |
 
 #### GuiDriver - drive the GUI like a user (6 tools)
 
