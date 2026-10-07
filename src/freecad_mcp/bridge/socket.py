@@ -21,6 +21,7 @@ import time
 import uuid
 from typing import Any
 
+from freecad_mcp.bridge.auth import current_token
 from freecad_mcp.bridge.base import (
     ConnectionStatus,
     DocumentInfo,
@@ -170,8 +171,9 @@ class SocketBridge(FreecadBridge):
             "method": method,
             "params": params or {},
         }
-        if self._auth_token:
-            request["auth"] = self._auth_token
+        token = current_token(self._auth_token)
+        if token:
+            request["auth"] = token
 
         async with self._lock:
             try:

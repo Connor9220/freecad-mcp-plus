@@ -8,7 +8,17 @@ This module provides the MCP bridge server that runs inside FreeCAD.
 It is bundled with the workbench addon for self-contained installation.
 """
 
-from .server import FreecadMCPPlugin
+from typing import Any
 
 __version__ = "0.6.2"  # Updated by release workflow
 __all__ = ["FreecadMCPPlugin", "__version__"]
+
+
+def __getattr__(name: str) -> Any:
+    # Load the server only when asked for: it imports FreeCADGui, and this package is
+    # imported while Init.py files run, before FreeCAD's GUI exists
+    if name == "FreecadMCPPlugin":
+        from .server import FreecadMCPPlugin
+
+        return FreecadMCPPlugin
+    raise AttributeError(name)

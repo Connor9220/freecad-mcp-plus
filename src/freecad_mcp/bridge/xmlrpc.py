@@ -28,6 +28,7 @@ import time
 import xmlrpc.client
 from typing import Any
 
+from freecad_mcp.bridge.auth import current_token, token_file
 from freecad_mcp.bridge.base import (
     ConnectionStatus,
     DocumentInfo,
@@ -102,8 +103,12 @@ class XmlRpcBridge(FreecadBridge):
         return f"http://{self._host}:{self._port}"
 
     def _new_proxy(self) -> xmlrpc.client.ServerProxy:
-        """A proxy of its own for one call; one proxy's connection can't serve two calls at once."""
-        transport = _TokenTransport(self._auth_token) if self._auth_token else None
+        """A proxy of its own for one call; one proxy's connection can't serve two calls at once.
+
+        The token is looked up per call, so one the bridge recreated is picked up.
+        """
+        token = current_token(self._auth_token)
+        transport = _TokenTransport(token) if token else None
         return xmlrpc.client.ServerProxy(
             self._server_url, allow_none=True, transport=transport
         )
@@ -214,6 +219,16 @@ The MCP+ bridge in FreeCAD is not running. To fix this:
             )
         except TimeoutError as e:
             msg = "Ping timed out"
+            raise ConnectionError(msg) from e
+        except xmlrpc.client.ProtocolError as e:
+            if e.errcode == 403:
+                msg = (
+                    "The FreeCAD bridge refused the request (403): it needs the per-user token. "
+                    f"Run this server as the same user as FreeCAD (token file {token_file()}), "
+                    "or set FREECAD_AUTH_TOKEN to the bridge's token."
+                )
+                raise ConnectionError(msg) from e
+            msg = f"Ping failed: {e}"
             raise ConnectionError(msg) from e
         except Exception as e:
             msg = f"Ping failed: {e}"

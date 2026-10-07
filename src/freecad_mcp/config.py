@@ -85,7 +85,7 @@ class ServerConfig(BaseSettings):
     auth_token: Annotated[
         str | None,
         Field(
-            description="Token the bridge asks for, when its Auth Token preference is set"
+            description="Bridge token; read from the per-user token file when unset (set it for a remote bridge)"
         ),
     ] = None
 

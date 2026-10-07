@@ -40,7 +40,7 @@ class TestAutoStartPreferences:
     def test_auto_start_uses_param_path(self, preferences_code: str) -> None:
         """Auto-start should use FreeCAD parameter system."""
         assert "PARAM_PATH" in preferences_code
-        assert "RobustMCPBridge" in preferences_code
+        assert "Mod/MCPPlus" in preferences_code
 
     def test_get_auto_start_returns_bool(self, preferences_code: str) -> None:
         """get_auto_start should return a bool."""

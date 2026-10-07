@@ -14,9 +14,7 @@ Python features at load time.
 
 from __future__ import annotations
 
-from typing import TypedDict
-
-import FreeCAD
+from typing import Any, TypedDict
 
 
 class PreferencesDict(TypedDict):
@@ -29,7 +27,7 @@ class PreferencesDict(TypedDict):
 
 
 # Parameter path for our workbench preferences
-PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/RobustMCPBridge"
+PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/MCPPlus"
 
 # Default values
 DEFAULT_AUTO_START = False
@@ -38,8 +36,12 @@ DEFAULT_XMLRPC_PORT = 9875
 DEFAULT_SOCKET_PORT = 9876
 
 
-def get_param() -> FreeCAD.ParameterGrp:
+def get_param() -> Any:
     """Get the parameter group for our preferences."""
+    # FreeCAD only: importing the bridge package here would load FreeCADGui while
+    # Init.py files run, before FreeCAD's GUI exists
+    import FreeCAD
+
     return FreeCAD.ParamGet(PARAM_PATH)
 
 
@@ -127,6 +129,27 @@ def set_socket_port(port: int) -> None:
     if not 1024 <= port <= 65535:
         raise ValueError(f"Port must be between 1024 and 65535, got {port}")
     get_param().SetInt("SocketPort", port)
+
+
+def get_require_auth() -> bool:
+    """Whether every bridge request must carry the per-user token (default on)."""
+    return get_param().GetBool("RequireAuth", True)
+
+
+def set_require_auth(enabled: bool) -> None:
+    """Set whether every bridge request must carry the per-user token."""
+    get_param().SetBool("RequireAuth", enabled)
+
+
+def get_bind_host() -> str:
+    """Address the bridge listens on (default localhost)."""
+    return get_param().GetString("BindHost", "") or "localhost"
+
+
+def set_bind_host(host: str) -> None:
+    """Set the address the bridge listens on; localhost keeps it to this machine."""
+    host = host.strip()
+    get_param().SetString("BindHost", "" if host in ("", "localhost") else host)
 
 
 def get_all_preferences() -> PreferencesDict:

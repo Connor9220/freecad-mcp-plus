@@ -72,3 +72,9 @@ def mock_object_info():
         },
         children=[],
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_token_file(tmp_path, monkeypatch):
+    """Keep the bridge's auth token file out of the real config folder during tests."""
+    monkeypatch.setenv("FREECAD_MCP_TOKEN_FILE", str(tmp_path / "mcp-plus-token"))

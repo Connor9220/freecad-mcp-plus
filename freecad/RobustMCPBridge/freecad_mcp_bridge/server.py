@@ -45,6 +45,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 try:
+    from .auth import load_or_create_token, read_token, token_file
     from .jobs import (
         DEFAULT_PAGE_CHARS,
         DEFAULT_PAGE_WAIT_MS,
@@ -53,6 +54,7 @@ try:
         JobStream,
     )
 except ImportError:  # loaded as a plain module by the headless runners
+    from auth import load_or_create_token, read_token, token_file
     from jobs import (
         DEFAULT_PAGE_CHARS,
         DEFAULT_PAGE_WAIT_MS,
@@ -67,8 +69,8 @@ MAX_EXECUTE_TIMEOUT_MS = 1_800_000
 MAX_PAGE_WAIT_MS = 60_000
 # Bumped when the bridge gains calls the MCP server relies on (2: jobs, status, auth)
 BRIDGE_PROTOCOL = 2
-PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/RobustMCPBridge"
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/MCPPlus"
 
 # Global registry of active servers for cleanup on Python exit
 # Uses weak references to avoid preventing garbage collection
@@ -188,15 +190,26 @@ def _addon_version() -> str | None:
     return None
 
 
-def _connection_preferences() -> tuple[str, str]:
-    """Bind host and auth token from the environment or FreeCAD's preferences."""
+def _connection_preferences() -> tuple[str, str, bool]:
+    """Bind host, explicit auth token and whether a token is required.
+
+    From the environment (``FREECAD_MCP_BIND_HOST``, ``FREECAD_MCP_AUTH_TOKEN``,
+    ``FREECAD_MCP_REQUIRE_AUTH``) or FreeCAD's preferences (``BindHost``, ``AuthToken``,
+    ``RequireAuth``, default on).
+    """
     host = os.environ.get("FREECAD_MCP_BIND_HOST", "")
     token = os.environ.get("FREECAD_MCP_AUTH_TOKEN", "")
+    require = os.environ.get("FREECAD_MCP_REQUIRE_AUTH", "")
     if FREECAD_AVAILABLE:
         params = FreeCAD.ParamGet(PARAM_PATH)
         host = host or params.GetString("BindHost", "")
         token = token or params.GetString("AuthToken", "")
-    return host or "localhost", token
+        required = params.GetBool("RequireAuth", True)
+    else:
+        required = True
+    if require:
+        required = require.strip().lower() not in ("0", "false", "no", "off")
+    return host or "localhost", token, required
 
 
 class ExecutionRequest:
@@ -261,16 +274,17 @@ class FreecadMCPPlugin:
         # Generate unique instance ID for this server
         self._instance_id = str(uuid.uuid4())
 
-        pref_host, pref_token = _connection_preferences()
+        pref_host, pref_token, require_auth = _connection_preferences()
         host = host or pref_host
-        self._auth_token = pref_token if auth_token is None else auth_token
-        if host not in LOOPBACK_HOSTS and not self._auth_token:
-            # Anyone who can reach the port can run code in FreeCAD: never without a token
-            if FREECAD_AVAILABLE:
-                FreeCAD.Console.PrintWarning(
-                    f"MCP+ Bridge: binding to {host} needs an auth token; using localhost.\n"
-                )
-            host = "localhost"
+        token = pref_token if auth_token is None else auth_token
+        self._token_from_file = False
+        if not token and (require_auth or host not in LOOPBACK_HOSTS):
+            # Whoever can reach the port can run code in FreeCAD: by default only callers that
+            # can read the user's token file (the user's own MCP server) get in. Beyond
+            # localhost a token is always required.
+            token = load_or_create_token()
+            self._token_from_file = True
+        self._auth_token = token
         self._host = host
         self._port = port
         self._xmlrpc_port = xmlrpc_port
@@ -956,6 +970,7 @@ class FreecadMCPPlugin:
             "modal_dialog": self._modal_title,
             "jobs_running": len(self._jobs.running()),
             "auth_required": bool(self._auth_token),
+            "token_file": str(token_file()) if self._token_from_file else None,
             "host": self._host,
         }
 
@@ -968,8 +983,12 @@ class FreecadMCPPlugin:
         ):
             # A web page from another site, reaching the bridge through a browser
             return False
-        if self._auth_token:
-            return bool(token) and hmac.compare_digest(str(token), self._auth_token)
+        expected = self._auth_token
+        if self._token_from_file:
+            # Re-read, so a token replaced from the preferences applies without a restart
+            expected = read_token() or expected
+        if expected:
+            return bool(token) and hmac.compare_digest(str(token), expected)
         return True
 
     def _execute_code_sync(
