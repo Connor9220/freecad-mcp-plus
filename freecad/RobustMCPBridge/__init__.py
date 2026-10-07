@@ -1,10 +1,12 @@
-"""Robust MCP Bridge Workbench - Initialization.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileCopyrightText: 2026 Billy Huddleston <billy@ivdc.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""MCP+ Workbench - Initialization.
 
 This module is executed when FreeCAD starts up. It handles initialization
-tasks for the Robust MCP Bridge workbench, including auto-start of the
+tasks for the MCP+ workbench, including auto-start of the
 MCP bridge if configured. Works in both GUI and headless modes.
 
 Note: Status bar updates are handled by InitGui.py since Qt operations
@@ -16,14 +18,14 @@ from __future__ import annotations
 # Import FreeCAD first so we can log early
 import FreeCAD
 
-FreeCAD.Console.PrintMessage("Robust MCP Bridge: Init.py loaded\n")
+FreeCAD.Console.PrintMessage("MCP+: Init.py loaded\n")
 
 from typing import TYPE_CHECKING, Any  # noqa: E402
 
 if TYPE_CHECKING:
     from freecad_mcp_bridge.bridge_utils import GuiWaiter
 
-FreeCAD.Console.PrintMessage("Robust MCP Bridge: Init loaded\n")
+FreeCAD.Console.PrintMessage("MCP+: Init loaded\n")
 
 # Global reference to GuiWaiter and auto-start timer to prevent garbage collection
 # Type annotations use Any for timer since it could be QTimer from PySide2 or PySide6
@@ -72,7 +74,7 @@ def _auto_start_bridge() -> None:
             return
 
         FreeCAD.Console.PrintMessage(
-            "Auto-starting MCP Bridge (configured in preferences)...\n"
+            "Auto-starting MCP+ Bridge (configured in preferences)...\n"
         )
 
         # Import and start the bridge directly
@@ -83,7 +85,6 @@ def _auto_start_bridge() -> None:
         socket_port = get_socket_port()
 
         plugin = FreecadMCPPlugin(
-            host="localhost",
             port=socket_port,
             xmlrpc_port=xmlrpc_port,
             enable_xmlrpc=True,
@@ -97,7 +98,7 @@ def _auto_start_bridge() -> None:
 
         FreeCAD.Console.PrintMessage("\n")
         FreeCAD.Console.PrintMessage("=" * 50 + "\n")
-        FreeCAD.Console.PrintMessage("MCP Bridge started!\n")
+        FreeCAD.Console.PrintMessage("MCP+ Bridge started!\n")
         FreeCAD.Console.PrintMessage(f"  - XML-RPC: localhost:{xmlrpc_port}\n")
         FreeCAD.Console.PrintMessage(f"  - Socket:  localhost:{socket_port}\n")
         FreeCAD.Console.PrintMessage("=" * 50 + "\n")
@@ -106,7 +107,7 @@ def _auto_start_bridge() -> None:
         )
 
     except Exception as e:
-        FreeCAD.Console.PrintError(f"Failed to auto-start MCP Bridge: {e}\n")
+        FreeCAD.Console.PrintError(f"Failed to auto-start MCP+ Bridge: {e}\n")
         import traceback
 
         FreeCAD.Console.PrintError(f"Traceback: {traceback.format_exc()}\n")
@@ -138,13 +139,11 @@ try:
     if os.environ.get("FREECAD_MCP_TESTING"):
         _autoStartEnabled = False
         FreeCAD.Console.PrintMessage(
-            "Robust MCP Bridge: Auto-start skipped (FREECAD_MCP_TESTING set)\n"
+            "MCP+: Auto-start skipped (FREECAD_MCP_TESTING set)\n"
         )
     else:
         _autoStartEnabled = get_auto_start()
-    FreeCAD.Console.PrintMessage(
-        f"Robust MCP Bridge: Auto-start preference = {_autoStartEnabled}\n"
-    )
+    FreeCAD.Console.PrintMessage(f"MCP+: Auto-start preference = {_autoStartEnabled}\n")
 
     if _autoStartEnabled:
         # Try to import Qt and check for running QApplication
@@ -155,14 +154,8 @@ try:
         _has_qapp = False
         _is_true_headless = False
 
-        try:
-            from PySide2 import QtCore, QtWidgets  # type: ignore[assignment, no-redef]
-        except ImportError:
-            with contextlib.suppress(ImportError):
-                from PySide6 import (  # type: ignore[assignment, no-redef]
-                    QtCore,
-                    QtWidgets,
-                )
+        with contextlib.suppress(ImportError):
+            from PySide import QtCore, QtWidgets  # type: ignore[assignment, no-redef]
 
         # Detect GUI mode vs true headless mode
         # - True headless (freecadcmd): QCoreApplication exists but NOT QApplication
@@ -182,17 +175,19 @@ try:
                     _is_true_headless = True
                 # If no app at all, assume early GUI startup (will use GuiWaiter)
 
+        # FreeCAD 1.1 doesn't define GuiUp yet while Init.py files run
+        _gui_up = bool(getattr(FreeCAD, "GuiUp", False))
         FreeCAD.Console.PrintMessage(
-            f"Robust MCP Bridge: GuiUp={FreeCAD.GuiUp}, "
+            f"MCP+: GuiUp={_gui_up}, "
             f"QtCore={'available' if QtCore else 'unavailable'}, "
             f"QApp={'running' if _has_qapp else 'none'}, "
             f"headless={_is_true_headless}\n"
         )
 
-        if FreeCAD.GuiUp:
+        if _gui_up:
             # GUI is already up - use timer for deferred start
             FreeCAD.Console.PrintMessage(
-                "Robust MCP Bridge: GUI already up, scheduling deferred start...\n"
+                "MCP+: GUI already up, scheduling deferred start...\n"
             )
             if QtCore is not None:
                 _auto_start_timer = QtCore.QTimer()
@@ -206,7 +201,7 @@ try:
             # True headless mode - QCoreApplication exists but not QApplication
             # No Qt event loop for GUI, so start bridge directly with background thread
             FreeCAD.Console.PrintMessage(
-                "Robust MCP Bridge: True headless mode (QCoreApplication only), "
+                "MCP+: True headless mode (QCoreApplication only), "
                 "starting directly...\n"
             )
             _auto_start_bridge()
@@ -214,24 +209,22 @@ try:
             # GUI not ready yet (either QApplication exists or no app yet)
             # Use GuiWaiter to wait for GuiUp to become True before starting
             # This ensures the bridge uses Qt timer (not background thread) for queue
-            FreeCAD.Console.PrintMessage(
-                "Robust MCP Bridge: GUI not ready, using GuiWaiter...\n"
-            )
+            FreeCAD.Console.PrintMessage("MCP+: GUI not ready, using GuiWaiter...\n")
             from freecad_mcp_bridge.bridge_utils import GuiWaiter
 
             _gui_waiter = GuiWaiter(
                 callback=_auto_start_bridge,
-                log_prefix="Robust MCP Bridge",
+                log_prefix="MCP+",
                 timeout_error_extra=(
-                    "\nTo start the bridge manually, select the Robust MCP Bridge "
-                    "workbench\nand click 'Start MCP Bridge'.\n\n"
+                    "\nTo start the bridge manually, select the MCP+ "
+                    "workbench\nand click 'Start MCP+ Bridge'.\n\n"
                 ),
             )
             _gui_waiter.start()
         else:
             # No Qt available at all - unusual state, start directly
             FreeCAD.Console.PrintMessage(
-                "Robust MCP Bridge: No Qt available, starting directly...\n"
+                "MCP+: No Qt available, starting directly...\n"
             )
             _auto_start_bridge()
 except Exception as e:

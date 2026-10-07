@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """MCP prompt templates for FreeCAD.
 
 This package contains reusable prompt templates for common FreeCAD tasks.

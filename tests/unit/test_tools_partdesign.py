@@ -1,5 +1,6 @@
 """Tests for PartDesign tools module."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -283,6 +284,37 @@ class TestPartDesignTools:
         mock_bridge.execute_python.assert_called_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tool_name", "var", "kwargs"),
+        [
+            ("pad_sketch", "pad", {"length": 10}),
+            ("revolution_sketch", "rev", {"angle": 360}),
+            ("groove_sketch", "groove", {"angle": 180}),
+        ],
+    )
+    async def test_symmetric_uses_sidetype_or_midplane(
+        self, register_tools, mock_bridge, tool_name, var, kwargs
+    ):
+        """symmetric should set SideType (1.1+) or Midplane, never only Symmetric."""
+        mock_bridge.execute_python = AsyncMock(
+            return_value=ExecutionResult(
+                success=True,
+                result={"name": "F", "label": "F", "type_id": "PartDesign::Feature"},
+                stdout="",
+                stderr="",
+                execution_time_ms=10.0,
+            )
+        )
+
+        await register_tools[tool_name](sketch_name="Sketch", symmetric=True, **kwargs)
+
+        code = mock_bridge.execute_python.call_args[0][0]
+        assert f'if "SideType" in {var}.PropertiesList:' in code
+        assert f'{var}.SideType = "Symmetric" if True else "One side"' in code
+        assert f'elif "Midplane" in {var}.PropertiesList:' in code
+        assert f"{var}.Midplane = True" in code
+
+    @pytest.mark.asyncio
     async def test_fillet_edges(self, register_tools, mock_bridge):
         """fillet_edges should add rounded edges via execute_python."""
         mock_bridge.execute_python = AsyncMock(
@@ -346,6 +378,79 @@ class TestPartDesignTools:
 
         assert result["name"] == "Hole"
         mock_bridge.execute_python.assert_called_once()
+
+    @staticmethod
+    def _run_hole_code(code):
+        """Run create_hole's generated code against a fake Hole with 1.1 enumerations."""
+
+        class FakeHole:
+            Name = "Hole"
+            Label = "Hole"
+            TypeId = "PartDesign::Hole"
+            ThreadType = "None"
+
+            def getEnumerationsOfProperty(self, prop):
+                if prop == "DepthType":
+                    return ["Dimension", "ThroughAll"]
+                if prop == "ThreadType":
+                    return ["None", "ISOMetricProfile", "ISOMetricFineProfile", "UNC"]
+                return {
+                    "ISOMetricProfile": ["M5x0.8", "M6x1.0", "M8x1.25"],
+                    "UNC": ["#10", "1/4"],
+                }.get(self.ThreadType, [])
+
+        hole = FakeHole()
+        sketch = object()
+        body = MagicMock(TypeId="PartDesign::Body", Group=[sketch])
+        body.newObject.return_value = hole
+        doc = MagicMock(Objects=[body])
+        doc.getObject.return_value = sketch
+        namespace = {"FreeCAD": MagicMock(ActiveDocument=doc)}
+        exec(code, namespace)  # noqa: S102 - runs the generated FreeCAD code on fakes
+        return hole
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("kwargs", "depth_type", "thread_type", "thread_size"),
+        [
+            ({"hole_type": "ThroughAll"}, "ThroughAll", "None", None),
+            ({"threaded": True}, "Dimension", "ISOMetricProfile", "M6x1.0"),
+            (
+                {"threaded": True, "thread_type": "UNC", "thread_size": "1/4"},
+                "Dimension",
+                "UNC",
+                "1/4",
+            ),
+        ],
+    )
+    async def test_create_hole_enum_names(
+        self, register_tools, mock_bridge, kwargs, depth_type, thread_type, thread_size
+    ):
+        """create_hole should set real DepthType/ThreadType/ThreadSize names."""
+        await register_tools["create_hole"](sketch_name="Sketch", **kwargs)
+        hole = self._run_hole_code(mock_bridge.execute_python.call_args[0][0])
+
+        assert hole.DepthType == depth_type
+        assert hole.ThreadType == thread_type
+        assert getattr(hole, "ThreadSize", None) == thread_size
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"hole_type": "UpToFirst"}, "Invalid hole_type"),
+            ({"threaded": True, "thread_type": "Bogus"}, "Invalid thread_type"),
+            ({"threaded": True, "thread_size": "M7"}, "Invalid thread_size"),
+        ],
+    )
+    async def test_create_hole_rejects_unknown_names(
+        self, register_tools, mock_bridge, kwargs, message
+    ):
+        """create_hole should raise a clear error for values Hole doesn't offer."""
+        await register_tools["create_hole"](sketch_name="Sketch", **kwargs)
+
+        with pytest.raises(ValueError, match=message):
+            self._run_hole_code(mock_bridge.execute_python.call_args[0][0])
 
     @pytest.mark.asyncio
     async def test_linear_pattern(self, register_tools, mock_bridge):
@@ -1106,6 +1211,77 @@ class TestPartDesignTools:
         assert result["constraint_count"] == 8
         assert result["is_fully_constrained"] is True
         mock_bridge.execute_python.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("sketch_attrs", "expected"),
+        [
+            # 1.0+: ExternalGeo holds the H/V axes plus one entry per element
+            ({"ExternalGeo": ["H", "V", "e1", "e2"]}, 2),
+            # Older builds: count the linked sub-elements
+            ({"ExternalGeometry": [("Box", ("Edge1", "Edge2")), ("Cyl", "Edge3")]}, 3),
+        ],
+    )
+    async def test_get_sketch_info_external_count(
+        self, register_tools, mock_bridge, sketch_attrs, expected
+    ):
+        """get_sketch_info should count external geometry without ExternalGeometryCount."""
+        mock_bridge.execute_python = AsyncMock(
+            return_value=ExecutionResult(
+                success=True, result={}, stdout="", stderr="", execution_time_ms=1.0
+            )
+        )
+        await register_tools["get_sketch_info"](sketch_name="Sketch")
+        code = mock_bridge.execute_python.call_args[0][0]
+        assert "ExternalGeometryCount" not in code
+
+        sketch = SimpleNamespace(
+            Name="Sketch",
+            Label="Sketch",
+            GeometryCount=1,
+            ConstraintCount=0,
+            **sketch_attrs,
+        )
+        doc = SimpleNamespace(getObject=lambda _name: sketch)
+        freecad = SimpleNamespace(getDocument=lambda _name: doc, ActiveDocument=doc)
+        namespace = {"FreeCAD": freecad}
+        exec(code, namespace)  # noqa: S102 - runs the generated FreeCAD code on fakes
+        assert namespace["_result_"]["external_geometry_count"] == expected
+
+    @pytest.mark.asyncio
+    async def test_get_sketch_info_reports_dof(self, register_tools, mock_bridge):
+        """get_sketch_info should report sketch.DoF, not solve()'s return code."""
+        await register_tools["get_sketch_info"](sketch_name="Sketch")
+        code = mock_bridge.execute_python.call_args[0][0]
+
+        sketch = MagicMock(ExternalGeo=["H", "V"], DoF=4, FullyConstrained=False)
+        sketch.solve.return_value = 0  # success code, which used to be reported as dof
+        doc = MagicMock()
+        doc.getObject.return_value = sketch
+        namespace = {"FreeCAD": MagicMock(ActiveDocument=doc)}
+        exec(code, namespace)  # noqa: S102 - runs the generated FreeCAD code on fakes
+
+        sketch.solve.assert_called_once()
+        assert namespace["_result_"]["dof"] == 4
+
+    @pytest.mark.asyncio
+    async def test_add_external_geometry_count(self, register_tools, mock_bridge):
+        """add_external_geometry should not use the removed ExternalGeometryCount."""
+        mock_bridge.execute_python = AsyncMock(
+            return_value=ExecutionResult(
+                success=True,
+                result={"success": True, "external_geometry_count": 1},
+                stdout="",
+                stderr="",
+                execution_time_ms=1.0,
+            )
+        )
+        await register_tools["add_external_geometry"](
+            sketch_name="Sketch", object_name="Box", element="Edge1"
+        )
+        code = mock_bridge.execute_python.call_args[0][0]
+        assert "ExternalGeometryCount" not in code
+        assert '"external_geometry_count": _external_geometry_count(sketch)' in code
 
     @pytest.mark.asyncio
     async def test_toggle_construction(self, register_tools, mock_bridge):

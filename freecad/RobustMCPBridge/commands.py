@@ -1,7 +1,9 @@
-"""MCP Bridge commands for the FreeCAD workbench.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileCopyrightText: 2026 Billy Huddleston <billy@ivdc.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""MCP+ Bridge commands for the FreeCAD workbench.
 
 This module defines the GUI commands for starting, stopping, and
 checking the status of the MCP bridge server.
@@ -55,7 +57,7 @@ class StartMCPBridgeCommand:
 
         return {
             "Pixmap": get_icon_path("Resources/Icons/mcp_start.svg"),
-            "MenuText": "Start MCP Bridge",
+            "MenuText": "Start MCP+ Bridge",
             "ToolTip": (
                 "Start the MCP bridge server for AI assistant integration.\n"
                 f"Listens on XML-RPC (port {xmlrpc_port}) and Socket (port {socket_port})."
@@ -71,7 +73,7 @@ class StartMCPBridgeCommand:
         global _mcp_plugin, _running_config
 
         if _mcp_plugin is not None and _mcp_plugin.is_running:
-            FreeCAD.Console.PrintWarning("MCP Bridge is already running.\n")
+            FreeCAD.Console.PrintWarning("MCP+ Bridge is already running.\n")
             return
 
         try:
@@ -97,7 +99,6 @@ class StartMCPBridgeCommand:
             # Create plugin in a local variable first to avoid leaving
             # a partially initialized instance in _mcp_plugin if start() fails
             plugin = FreecadMCPPlugin(
-                host="localhost",
                 port=socket_port,
                 xmlrpc_port=xmlrpc_port,
                 enable_xmlrpc=True,
@@ -119,7 +120,7 @@ class StartMCPBridgeCommand:
 
             FreeCAD.Console.PrintMessage("\n")
             FreeCAD.Console.PrintMessage("=" * 50 + "\n")
-            FreeCAD.Console.PrintMessage("MCP Bridge started!\n")
+            FreeCAD.Console.PrintMessage("MCP+ Bridge started!\n")
             FreeCAD.Console.PrintMessage(f"  - XML-RPC: localhost:{xmlrpc_port}\n")
             FreeCAD.Console.PrintMessage(f"  - Socket:  localhost:{socket_port}\n")
             FreeCAD.Console.PrintMessage("=" * 50 + "\n")
@@ -131,10 +132,8 @@ class StartMCPBridgeCommand:
             # Clear any stale state to ensure clean retry
             _mcp_plugin = None
             _running_config = None
-            FreeCAD.Console.PrintError(f"Failed to import MCP Bridge module: {e}\n")
-            FreeCAD.Console.PrintError(
-                "Ensure the Robust MCP Bridge addon is properly installed.\n"
-            )
+            FreeCAD.Console.PrintError(f"Failed to import MCP+ Bridge module: {e}\n")
+            FreeCAD.Console.PrintError("Ensure the MCP+ addon is properly installed.\n")
             try:
                 from preferences import get_status_bar_enabled
                 from Qt.status_widget import update_status_error
@@ -147,7 +146,7 @@ class StartMCPBridgeCommand:
             # Clear any stale state to ensure clean retry
             _mcp_plugin = None
             _running_config = None
-            FreeCAD.Console.PrintError(f"Failed to start MCP Bridge: {e}\n")
+            FreeCAD.Console.PrintError(f"Failed to start MCP+ Bridge: {e}\n")
             try:
                 from preferences import get_status_bar_enabled
                 from Qt.status_widget import update_status_error
@@ -165,7 +164,7 @@ class StopMCPBridgeCommand:
         """Return the command resources (icon, menu text, tooltip)."""
         return {
             "Pixmap": get_icon_path("Resources/Icons/mcp_stop.svg"),
-            "MenuText": "Stop MCP Bridge",
+            "MenuText": "Stop MCP+ Bridge",
             "ToolTip": "Stop the running MCP bridge server.",
         }
 
@@ -178,7 +177,7 @@ class StopMCPBridgeCommand:
         global _mcp_plugin, _running_config
 
         if _mcp_plugin is None or not _mcp_plugin.is_running:
-            FreeCAD.Console.PrintWarning("MCP Bridge is not running.\n")
+            FreeCAD.Console.PrintWarning("MCP+ Bridge is not running.\n")
             return
 
         try:
@@ -198,11 +197,11 @@ class StopMCPBridgeCommand:
 
             FreeCAD.Console.PrintMessage("\n")
             FreeCAD.Console.PrintMessage("=" * 50 + "\n")
-            FreeCAD.Console.PrintMessage("MCP Bridge stopped.\n")
+            FreeCAD.Console.PrintMessage("MCP+ Bridge stopped.\n")
             FreeCAD.Console.PrintMessage("=" * 50 + "\n")
 
         except Exception as e:
-            FreeCAD.Console.PrintError(f"Failed to stop MCP Bridge: {e}\n")
+            FreeCAD.Console.PrintError(f"Failed to stop MCP+ Bridge: {e}\n")
 
 
 class MCPBridgeStatusCommand:
@@ -212,7 +211,7 @@ class MCPBridgeStatusCommand:
         """Return the command resources (icon, menu text, tooltip)."""
         return {
             "Pixmap": get_icon_path("Resources/Icons/mcp_status.svg"),
-            "MenuText": "MCP Bridge Status",
+            "MenuText": "MCP+ Bridge Status",
             "ToolTip": "Show the current status of the MCP bridge server.",
         }
 
@@ -224,7 +223,7 @@ class MCPBridgeStatusCommand:
         """Execute the command to show MCP bridge status."""
         FreeCAD.Console.PrintMessage("\n")
         FreeCAD.Console.PrintMessage("=" * 50 + "\n")
-        FreeCAD.Console.PrintMessage("MCP Bridge Status\n")
+        FreeCAD.Console.PrintMessage("MCP+ Bridge Status\n")
         FreeCAD.Console.PrintMessage("=" * 50 + "\n")
 
         if _mcp_plugin is None:
@@ -254,7 +253,7 @@ def restart_bridge_if_running() -> bool:
     if _mcp_plugin is None or not _mcp_plugin.is_running:
         return False
 
-    FreeCAD.Console.PrintMessage("Restarting MCP Bridge with new configuration...\n")
+    FreeCAD.Console.PrintMessage("Restarting MCP+ Bridge with new configuration...\n")
 
     # Update status bar widget
     try:
@@ -272,7 +271,7 @@ def restart_bridge_if_running() -> bool:
         _mcp_plugin = None
         _running_config = None
     except Exception as e:
-        FreeCAD.Console.PrintError(f"Failed to stop MCP Bridge: {e}\n")
+        FreeCAD.Console.PrintError(f"Failed to stop MCP+ Bridge: {e}\n")
         try:
             from preferences import get_status_bar_enabled
             from Qt.status_widget import update_status_error
@@ -293,7 +292,6 @@ def restart_bridge_if_running() -> bool:
         socket_port = get_socket_port()
 
         _mcp_plugin = FreecadMCPPlugin(
-            host="localhost",
             port=socket_port,
             xmlrpc_port=xmlrpc_port,
             enable_xmlrpc=True,
@@ -309,13 +307,13 @@ def restart_bridge_if_running() -> bool:
         if get_status_bar_enabled():
             update_status_running(xmlrpc_port, socket_port, _mcp_plugin.request_count)
 
-        FreeCAD.Console.PrintMessage("MCP Bridge restarted successfully.\n")
+        FreeCAD.Console.PrintMessage("MCP+ Bridge restarted successfully.\n")
         FreeCAD.Console.PrintMessage(f"  - XML-RPC: localhost:{xmlrpc_port}\n")
         FreeCAD.Console.PrintMessage(f"  - Socket:  localhost:{socket_port}\n")
         return True
 
     except Exception as e:
-        FreeCAD.Console.PrintError(f"Failed to restart MCP Bridge: {e}\n")
+        FreeCAD.Console.PrintError(f"Failed to restart MCP+ Bridge: {e}\n")
         try:
             from preferences import get_status_bar_enabled
             from Qt.status_widget import update_status_error
@@ -336,8 +334,8 @@ class MCPBridgePreferencesCommand:
             "Pixmap": get_icon_path(
                 "Resources/Icons/preferences-robust_mcp_bridge.svg"
             ),
-            "MenuText": "MCP Bridge Preferences...",
-            "ToolTip": "Configure MCP Bridge settings (ports, auto-start, etc.)",
+            "MenuText": "MCP+ Bridge Preferences...",
+            "ToolTip": "Configure MCP+ Bridge settings (ports, auto-start, etc.)",
         }
 
     def IsActive(self) -> bool:
@@ -348,7 +346,7 @@ class MCPBridgePreferencesCommand:
         """Execute the command to show preferences dialog."""
         if not FreeCAD.GuiUp:
             FreeCAD.Console.PrintError(
-                "MCP Bridge Preferences requires FreeCAD GUI mode.\n"
+                "MCP+ Bridge Preferences requires FreeCAD GUI mode.\n"
             )
             return
         # Import here to avoid issues during module loading
@@ -363,19 +361,11 @@ class MCPBridgePreferencesCommand:
             set_status_bar_enabled,
             set_xmlrpc_port,
         )
-
-        # Import QtWidgets with fallback for different PySide versions
-        try:
-            from PySide6 import QtWidgets
-        except ImportError:
-            try:
-                from PySide2 import QtWidgets  # type: ignore[no-redef]
-            except ImportError:
-                from PySide import QtWidgets  # type: ignore[import-not-found,no-redef]
+        from PySide import QtWidgets
 
         # Create the dialog
         dialog = QtWidgets.QDialog(FreeCADGui.getMainWindow())
-        dialog.setWindowTitle("MCP Bridge Preferences")
+        dialog.setWindowTitle("MCP+ Bridge Preferences")
         dialog.setMinimumWidth(400)
 
         layout = QtWidgets.QVBoxLayout(dialog)
@@ -463,7 +453,7 @@ class MCPBridgePreferencesCommand:
             set_xmlrpc_port(xmlrpc_spin.value())
             set_socket_port(socket_spin.value())
 
-            FreeCAD.Console.PrintMessage("MCP Bridge preferences saved.\n")
+            FreeCAD.Console.PrintMessage("MCP+ Bridge preferences saved.\n")
 
             # Check if ports changed and bridge is running
             new_xmlrpc = xmlrpc_spin.value()

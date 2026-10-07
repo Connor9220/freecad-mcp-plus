@@ -1,17 +1,39 @@
-# FreeCAD Robust MCP Server
+<img src="Resources/Icons/Logo.svg" alt="MCP+ robot" width="96" align="right">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI Version](https://img.shields.io/pypi/v/freecad-robust-mcp)](https://pypi.org/project/freecad-robust-mcp/)
-[![Python Versions](https://img.shields.io/pypi/pyversions/freecad-robust-mcp)](https://pypi.org/project/freecad-robust-mcp/)
-[![Docker Image Version](https://img.shields.io/docker/v/spkane/freecad-robust-mcp?sort=semver&label=docker)](https://hub.docker.com/r/spkane/freecad-robust-mcp)
-[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://spkane.github.io/freecad-addon-robust-mcp-server/)
+# MCP+
 
-[![CI Tests](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/test.yaml/badge.svg)](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/test.yaml)
-[![Docker Build](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/docker.yaml/badge.svg)](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/docker.yaml)
-[![Pre-commit](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/pre-commit.yaml/badge.svg)](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/pre-commit.yaml)
-[![CodeQL](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/codeql.yaml/badge.svg)](https://github.com/spkane/freecad-addon-robust-mcp-server/actions/workflows/codeql.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that enables integration between AI assistants (Claude, GPT, and other MCP-compatible tools) and [FreeCAD](https://www.freecadweb.org/), allowing AI-assisted development and debugging of 3D models, macros, and workbenches.
+MCP+ lets AI assistants (Claude Code and other [MCP](https://modelcontextprotocol.io/) clients) work in
+your live [FreeCAD](https://www.freecad.org/) session: build and inspect models, run Python, drive the
+GUI the way a user would, and review CAM jobs. It works with FreeCAD 1.1 and newer development builds.
+
+MCP+ is built on [spkane's Robust MCP Server](https://github.com/spkane/freecad-addon-robust-mcp-server)
+and adds:
+
+- **CAM tools**: path statistics, A/B comparisons between two code trees, geometry finders, test
+  fixtures, posting and G-code diffs, gouge and coverage checks, headless test runs, demo recording.
+- **GuiDriver**: run toolbar commands, fill in task panels, answer modal dialogs by rule
+  (see [GuiDriver](#guidriver---drive-the-gui-like-a-user-6-tools)).
+- **Runs that outlast their timeout keep going**: the answer carries a `job_token`, and
+  `get_output_page` reads the rest of the output and the result page by page
+  (after [CREATeNG/freecad-mcp-bridge](https://github.com/CREATeNG/freecad-mcp-bridge)).
+- **`bridge_status`**: what FreeCAD is busy with, or which modal dialog is blocking it, answered even
+  while every other call would wait (after [neka-nat/freecad-mcp](https://github.com/neka-nat/freecad-mcp)).
+- **`execute_python_file`**: run a script with `__file__` set and `__name__ == "__main__"`.
+- **Safer bridge**: requests from foreign web pages are refused, and an optional auth token
+  (preferences `AuthToken` / `BindHost`, or `FREECAD_MCP_AUTH_TOKEN` / `FREECAD_MCP_BIND_HOST`) is
+  required before the bridge listens beyond localhost.
+- **Fixes**: Addon Manager crash on install, Qt imports through FreeCAD's `PySide` wrapper,
+  PartDesign/Sketcher tools on FreeCAD 1.x, screenshots, `.env` handling.
+
+Install it with the Addon Manager: **Edit → Preferences → Addon Manager → Custom repositories → +**,
+add `https://github.com/Connor9220/freecad-mcp-plus` with branch `main`, then install **MCP+** from
+**Tools → Addon Manager** and restart FreeCAD. The MCP server half installs with
+`pip install git+https://github.com/Connor9220/freecad-mcp-plus` (command `freecad-mcp`).
+
+The rest of this README is spkane's original documentation; it still applies, with "Robust MCP
+Bridge" now shown as "MCP+".
 
 ## Table of Contents
 
@@ -90,7 +112,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 
 ## Installation Requirements / Dependencies
 
-- [FreeCAD](https://www.freecadweb.org/) 0.21+ or 1.0+
+- [FreeCAD](https://www.freecad.org/) 1.1 or newer
 - Python 3.11 (required for FreeCAD ABI compatibility)
 
 ---
@@ -485,6 +507,23 @@ The Robust MCP Server provides **150+ tools** organized into categories. Tools m
 | `list_parts_library`       | List parts in FreeCAD's parts library | All  |
 | `insert_part_from_library` | Insert a part from the library        | All  |
 
+#### GuiDriver - drive the GUI like a user (6 tools)
+
+The add-on ships `guidriver` (in `freecad/RobustMCPBridge/guidriver/`, importable inside
+FreeCAD as `import guidriver`; CAM parts in `guidriver.cam`). It runs real GUI commands,
+reads and sets task panel widgets through their own Qt API (GUI gating included), presses
+the task view's OK/Cancel and answers modal dialogs by rule; a dialog no rule matches is
+rejected after 3 s and reported. See its [README](freecad/RobustMCPBridge/guidriver/README.md).
+
+| Tool               | Description                                                        | Mode |
+| ------------------ | ------------------------------------------------------------------ | ---- |
+| `gui_run_command`  | Run a command like a toolbar click, with modal-dialog rules        | GUI  |
+| `gui_panel`        | Dump / set / click / OK / Cancel the open task panel               | GUI  |
+| `gui_edit`         | Open an object's editor like a tree double-click                   | GUI  |
+| `cam_gui_add_base` | Base Geometry "Add" on the open CAM operation panel                | GUI  |
+| `cam_gui_check`    | Pre-post warnings (and summary) for a CAM job                      | GUI  |
+| `cam_gui_post`     | Post a job, answering the post's dialogs by rule (never uploads)   | GUI  |
+
 ---
 
 ## For Developers
@@ -496,7 +535,7 @@ This section covers development setup, contributing, and working with the codeba
 ### Prerequisites
 
 - [mise](https://mise.jdx.dev/) - Tool version manager
-- [FreeCAD](https://www.freecadweb.org/) 0.21+ or 1.0+
+- [FreeCAD](https://www.freecad.org/) 1.1 or newer
 
 ### Initial Setup
 
@@ -671,6 +710,14 @@ See the [detailed architecture document](docs/development/architecture-detailed.
 ---
 
 ## Acknowledgements
+
+MCP+ is a copy of [spkane/freecad-addon-robust-mcp-server](https://github.com/spkane/freecad-addon-robust-mcp-server)
+by Sean P. Kane, extended by Billy Huddleston. It also takes ideas from
+[neka-nat/freecad-mcp](https://github.com/neka-nat/freecad-mcp) (bridge status, version check) and
+[CREATeNG/freecad-mcp-bridge](https://github.com/CREATeNG/freecad-mcp-bridge) (paged output for long
+runs, Origin check, running files). All three are MIT licensed; their notices are in [LICENSE](LICENSE).
+
+spkane's original acknowledgements:
 
 This project was developed after analyzing several existing FreeCAD Robust MCP implementations. We are grateful to these projects for their pioneering work and the ideas they contributed to the FreeCAD + AI ecosystem:
 

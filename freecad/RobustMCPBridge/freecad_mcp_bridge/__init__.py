@@ -1,7 +1,8 @@
-"""FreeCAD Robust MCP Bridge - Bundled server module for the workbench addon.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""FreeCAD MCP+ - Bundled server module for the workbench addon.
 
 This module provides the MCP bridge server that runs inside FreeCAD.
 It is bundled with the workbench addon for self-contained installation.

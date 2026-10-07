@@ -185,6 +185,54 @@ convention = "google"
     "SIM117", # Allow nested with statements
     "B017",   # Allow blind exception catch in tests
 ]
+# CAM helpers that run INSIDE FreeCAD (sent through the bridge or exec'd by
+# headless FreeCADCmd) follow the same relaxed rules as macros
+"src/freecad_mcp/cam/fc_*.py" = [
+    "ANN",    # FreeCAD types are dynamic
+    "PTH",    # os.path/open - matches embedded FreeCAD code style
+    "S102",   # exec is how these scripts run the caller's probe
+    "SIM102", # nested ifs read better in move classification
+    "SIM115", # short-lived files in a one-shot script
+    "PLR0402",# PathScripts import mirrors FreeCAD's own style
+    "PLR0912",# move classification has many branches
+    "PLR0915",# ... and many statements
+]
+# GuiDriver runs INSIDE the FreeCAD GUI (imported as `guidriver`); compact
+# Qt-driving code in the style of FreeCAD's own modules
+"freecad/RobustMCPBridge/guidriver/**/*.py" = [
+    "ANN",    # Qt/FreeCAD types are dynamic
+    "D",      # comment headers instead of docstrings on every helper
+    "PTH",    # os.path - matches FreeCAD code style
+    "E741",   # short loop names (l) in widget walks
+    "B023",   # closures over loop variables are used immediately
+    "ERA001", # usage examples in comments
+    "PLR0911",# widget dispatch returns per widget type
+    "PLR0912",# ... and branches per widget type
+    "PLW2901",# loop variables normalized in place
+    "S101",   # asserts in recipes
+    "SIM102", # nested ifs read better in widget walks
+    "SIM108", # if-else over ternary
+    "SIM115", # short-lived files
+    "C901",   # long recipe steps
+    "E401",   # xkeys_external.py is a compact standalone script
+    "E702",   # ... with several statements per line
+    "N806",   # module aliases (QtTest) in functions
+    "A001",   # widgets.set shadows the builtin by design
+    "ARG001", # interface-compatible signatures (e.g. _preset_doc_limit job)
+    "ARG005", # predicate lambdas ignore their argument
+    "B007",   # repeat loops (double click)
+    "B905",   # zip() over checkboxes vs states: shorter wins by design
+    "C416",   # explicit list comprehensions over findChildren
+    "C420",   # dict comprehensions kept as written
+    "E701",   # compact standalone script
+    "PLR5501",# else-if kept as written
+    "RUF005", # list concatenation kept as written
+    "RUF046", # int(round()) kept for Python/Qt clarity
+    "RUF059", # tuple unpacking documents the shape
+    "S108",   # xmouse screenshot dir default; overridden per session
+    "SIM114", # separate branches per widget type
+    "UP031",  # %-formatting kept as written
+]
 # FreeCAD macros have relaxed rules - they are standalone GUI scripts
 # But still require essential docstrings (module, class, public function)
 "**/*.FCMacro" = [

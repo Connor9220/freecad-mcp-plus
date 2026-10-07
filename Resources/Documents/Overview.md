@@ -47,4 +47,4 @@ For full documentation, visit:
 ## License
 
 - Code: MIT License
-- Icons: CC-BY-NC-SA-4.0
+- Icons: MIT (same as the code)

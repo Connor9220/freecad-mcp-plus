@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileCopyrightText: 2026 Billy Huddleston <billy@ivdc.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """Socket bridge for FreeCAD communication via JSON-RPC.
 
 This bridge communicates with FreeCAD using JSON-RPC over TCP sockets,
@@ -69,6 +74,7 @@ class SocketBridge(FreecadBridge):
         port: int = DEFAULT_SOCKET_PORT,
         timeout: float = DEFAULT_TIMEOUT,
         auto_reconnect: bool = True,
+        auth_token: str | None = None,
     ) -> None:
         """Initialize the socket bridge.
 
@@ -77,7 +83,9 @@ class SocketBridge(FreecadBridge):
             port: Socket server port.
             timeout: Connection and request timeout in seconds.
             auto_reconnect: Whether to automatically reconnect on connection loss.
+            auth_token: Token the bridge asks for, when it has one set.
         """
+        self._auth_token = auth_token or None
         self._host = host
         self._port = port
         self._timeout = timeout
@@ -162,6 +170,8 @@ class SocketBridge(FreecadBridge):
             "method": method,
             "params": params or {},
         }
+        if self._auth_token:
+            request["auth"] = self._auth_token
 
         async with self._lock:
             try:
@@ -265,12 +275,17 @@ class SocketBridge(FreecadBridge):
         self,
         code: str,
         timeout_ms: int = 30000,
+        echo: bool = False,
+        while_busy: bool = False,
     ) -> ExecutionResult:
         """Execute Python code in FreeCAD context via socket.
 
         Args:
             code: Python code to execute.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds. A run that takes longer
+                keeps going; the result then carries a ``job_token`` for get_output_page.
+            echo: Also print the run's output to FreeCAD's Report view.
+            while_busy: Run even while another run waits inside a modal dialog.
 
         Returns:
             ExecutionResult with execution outcome.
@@ -279,20 +294,33 @@ class SocketBridge(FreecadBridge):
 
         try:
             result = await asyncio.wait_for(
-                self._send_request("execute", {"code": code}),
-                timeout=timeout_ms / 1000,
+                self._send_request(
+                    "execute",
+                    {
+                        "code": code,
+                        "timeout_ms": timeout_ms,
+                        "echo": echo,
+                        "nested": while_busy,
+                    },
+                ),
+                # Leave room for the bridge's own "still running" answer
+                timeout=timeout_ms / 1000 + 15,
             )
             elapsed = (time.perf_counter() - start) * 1000
 
             if isinstance(result, dict):
+                stderr = result.get("stderr", "")
+                if not result.get("success", False) and not stderr:
+                    stderr = result.get("error_message", "")
                 return ExecutionResult(
                     success=result.get("success", False),
                     result=result.get("result"),
                     stdout=result.get("stdout", ""),
-                    stderr=result.get("stderr", ""),
+                    stderr=stderr,
                     execution_time_ms=elapsed,
                     error_type=result.get("error_type"),
                     error_traceback=result.get("error_traceback"),
+                    job_token=result.get("job_token"),
                 )
             else:
                 return ExecutionResult(
@@ -331,6 +359,22 @@ class SocketBridge(FreecadBridge):
                 execution_time_ms=0,
                 error_type="ConnectionError",
             )
+
+    async def get_output_page(
+        self,
+        job_token: str,
+        page_no: int = 0,
+        wait_ms: int = 15000,
+    ) -> dict[str, Any]:
+        """Page ``page_no`` of a run that outlasted its timeout (see execute_python)."""
+        return await self._send_request(
+            "get_output_page",
+            {"job_token": job_token, "page_no": page_no, "wait_ms": wait_ms},
+        )
+
+    async def bridge_status(self) -> dict[str, Any]:
+        """The bridge's own status, answered without FreeCAD's main thread."""
+        return await self._send_request("status")
 
     # =========================================================================
     # Document Management
@@ -703,7 +747,9 @@ if view is None:
     raise ValueError("No active view")
 
 # Check view type
-view_type = view.__class__.__name__
+# Note: Use type() instead of __class__ because FreeCAD's View3DInventor
+# has a broken __class__ attribute that returns a dict of methods.
+view_type = type(view).__name__
 if view_type not in ["View3DInventor", "View3DInventorPy"]:
     raise ValueError(f"Cannot capture screenshot from {{view_type}} view")
 

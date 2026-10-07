@@ -1,7 +1,8 @@
-"""Preferences management for the Robust MCP Bridge workbench.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""Preferences management for the MCP+ workbench.
 
 This module handles reading and writing workbench preferences using
 FreeCAD's parameter system.

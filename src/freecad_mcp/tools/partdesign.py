@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileCopyrightText: 2026 Billy Huddleston <billy@ivdc.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """PartDesign tools for FreeCAD Robust MCP Server.
 
 This module provides tools for the PartDesign workbench, enabling
@@ -315,7 +320,13 @@ try:
     pad = body.newObject("PartDesign::Pad", pad_name)
     pad.Profile = sketch
     pad.Length = {length}
-    pad.Symmetric = {symmetric}
+    # SideType (1.1+) replaced Midplane (deprecated); there is no Symmetric property
+    if "SideType" in pad.PropertiesList:
+        pad.SideType = "Symmetric" if {symmetric} else "One side"
+    elif "Midplane" in pad.PropertiesList:
+        pad.Midplane = {symmetric}
+    else:
+        pad.Symmetric = {symmetric}
     pad.Reversed = {reversed}
 
     doc.recompute()
@@ -633,7 +644,13 @@ try:
     rev = body.newObject("PartDesign::Revolution", rev_name)
     rev.Profile = sketch
     rev.Angle = {angle}
-    rev.Symmetric = {symmetric}
+    # SideType (1.1+) replaced Midplane (deprecated); there is no Symmetric property
+    if "SideType" in rev.PropertiesList:
+        rev.SideType = "Symmetric" if {symmetric} else "One side"
+    elif "Midplane" in rev.PropertiesList:
+        rev.Midplane = {symmetric}
+    else:
+        rev.Symmetric = {symmetric}
     rev.Reversed = {reversed}
 
     # Set axis reference
@@ -724,7 +741,13 @@ try:
     groove = body.newObject("PartDesign::Groove", groove_name)
     groove.Profile = sketch
     groove.Angle = {angle}
-    groove.Symmetric = {symmetric}
+    # SideType (1.1+) replaced Midplane (deprecated); there is no Symmetric property
+    if "SideType" in groove.PropertiesList:
+        groove.SideType = "Symmetric" if {symmetric} else "One side"
+    elif "Midplane" in groove.PropertiesList:
+        groove.Midplane = {symmetric}
+    else:
+        groove.Symmetric = {symmetric}
     groove.Reversed = {reversed}
 
     # Set axis reference
@@ -779,10 +802,12 @@ _result_ = {{
             hole_type: Hole depth type. Options:
                 - "Dimension" - Specific depth
                 - "ThroughAll" - Through entire part
-                - "UpToFirst" - Up to first face
             threaded: Whether hole is threaded. Defaults to False.
-            thread_type: Thread standard. Options: "ISO", "UNC", "UNF".
-            thread_size: Thread size (e.g., "M6", "M8", "#10", "1/4").
+            thread_type: Thread standard, a Hole ThreadType name such as
+                "ISOMetricProfile", "ISOMetricFineProfile", "UNC", "UNF".
+                "ISO" means "ISOMetricProfile".
+            thread_size: Thread size (e.g., "M6", "M6x0.75", "#10", "1/4").
+                A metric size without pitch gets the first listed pitch.
             name: Hole feature name. Auto-generated if None.
             doc_name: Document containing the sketch. Uses active document if None.
 
@@ -819,20 +844,31 @@ try:
     hole.Profile = sketch
     hole.Depth = {depth}
 
-    # Set hole type
+    # Set hole type (Hole has no "UpToFirst" depth, only these enumeration names)
     hole_type = {hole_type!r}
-    if hole_type == "ThroughAll":
-        hole.DepthType = 1
-    elif hole_type == "UpToFirst":
-        hole.DepthType = 2
-    else:
-        hole.DepthType = 0  # Dimension
+    depth_types = hole.getEnumerationsOfProperty("DepthType")
+    if hole_type not in depth_types:
+        raise ValueError(f"Invalid hole_type: {{hole_type}}. Hole supports: {{depth_types}}")
+    hole.DepthType = hole_type
 
     # Set threading
     if {threaded}:
         hole.Threaded = True
-        hole.ThreadType = {thread_type!r}
-        hole.ThreadSize = {thread_size!r}
+        # Accept the short "ISO" name for the coarse metric profile
+        thread_type = {{"ISO": "ISOMetricProfile"}}.get({thread_type!r}, {thread_type!r})
+        thread_types = hole.getEnumerationsOfProperty("ThreadType")
+        if thread_type not in thread_types:
+            raise ValueError(f"Invalid thread_type: {{thread_type}}. Options: {{thread_types}}")
+        hole.ThreadType = thread_type
+        # Sizes are listed per type; ISO ones carry the pitch ("M6" -> "M6x1.0")
+        thread_size = {thread_size!r}
+        sizes = hole.getEnumerationsOfProperty("ThreadSize")
+        if thread_size not in sizes:
+            matches = [size for size in sizes if size.startswith(thread_size + "x")]
+            if not matches:
+                raise ValueError(f"Invalid thread_size: {{thread_size}}. Options: {{sizes}}")
+            thread_size = matches[0]
+        hole.ThreadSize = thread_size
     else:
         hole.Threaded = False
         hole.Diameter = {diameter}
@@ -2780,6 +2816,16 @@ ref_obj = doc.getObject({object_name!r})
 if ref_obj is None:
     raise ValueError(f"Object not found: {object_name!r}")
 
+def _external_geometry_count(sketch):
+    # ExternalGeo (1.0+) lists the sketch H and V axes first, then one entry per
+    # external element; older builds only have the ExternalGeometry links
+    ext_geo = getattr(sketch, "ExternalGeo", None)
+    if ext_geo is not None:
+        return max(len(ext_geo) - 2, 0)
+    return sum(
+        1 if isinstance(subs, str) else len(subs) for _obj, subs in sketch.ExternalGeometry
+    )
+
 # Wrap in transaction for undo support
 doc.openTransaction("Add External Geometry")
 try:
@@ -2789,7 +2835,7 @@ try:
 
     _result_ = {{
         "success": True,
-        "external_geometry_count": sketch.ExternalGeometryCount,
+        "external_geometry_count": _external_geometry_count(sketch),
     }}
 except Exception:
     doc.abortTransaction()
@@ -2920,14 +2966,28 @@ sketch = doc.getObject({sketch_name!r})
 if sketch is None:
     raise ValueError(f"Sketch not found: {sketch_name!r}")
 
+def _external_geometry_count(sketch):
+    # ExternalGeo (1.0+) lists the sketch H and V axes first, then one entry per
+    # external element; older builds only have the ExternalGeometry links
+    ext_geo = getattr(sketch, "ExternalGeo", None)
+    if ext_geo is not None:
+        return max(len(ext_geo) - 2, 0)
+    return sum(
+        1 if isinstance(subs, str) else len(subs) for _obj, subs in sketch.ExternalGeometry
+    )
+
+# solve() returns an error code (0 = solved), not the DoF; it refreshes DoF
+if hasattr(sketch, "solve"):
+    sketch.solve()
+
 _result_ = {{
     "name": sketch.Name,
     "label": sketch.Label,
     "geometry_count": sketch.GeometryCount,
     "constraint_count": sketch.ConstraintCount,
-    "external_geometry_count": sketch.ExternalGeometryCount,
+    "external_geometry_count": _external_geometry_count(sketch),
     "fully_constrained": sketch.FullyConstrained if hasattr(sketch, "FullyConstrained") else None,
-    "dof": sketch.solve() if hasattr(sketch, "solve") else None,
+    "dof": getattr(sketch, "DoF", None),
 }}
 """
         result = await bridge.execute_python(code)

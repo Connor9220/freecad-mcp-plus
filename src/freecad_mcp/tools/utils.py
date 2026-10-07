@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """Utility functions for FreeCAD MCP tools.
 
 This module provides shared utilities for tool implementations,

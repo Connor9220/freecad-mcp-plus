@@ -663,9 +663,9 @@ create_hole(
     sketch_name: str,        # Sketch with center point(s)
     diameter: float = 6.0,
     depth: float = 10.0,
-    hole_type: str = "Dimension",  # "Dimension", "ThroughAll", "UpToFirst"
+    hole_type: str = "Dimension",  # "Dimension", "ThroughAll"
     threaded: bool = False,
-    thread_type: str = "ISO",  # "ISO", "UNC", "UNF"
+    thread_type: str = "ISO",  # "ISO" (= "ISOMetricProfile"), "ISOMetricFineProfile", "UNC", "UNF"
     thread_size: str = "M6",
     name: str | None = None,
     doc_name: str | None = None

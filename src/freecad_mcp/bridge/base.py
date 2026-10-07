@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """Abstract bridge interface for FreeCAD communication.
 
 This module defines the abstract base class and data types for all FreeCAD
@@ -53,6 +57,8 @@ class ExecutionResult:
         execution_time_ms: Time taken in milliseconds.
         error_type: Type of exception if failed, None otherwise.
         error_traceback: Full traceback if failed, None otherwise.
+        job_token: Set when the run outlasted its timeout and is still going;
+            read its output and result with ``get_output_page``.
     """
 
     success: bool
@@ -62,6 +68,7 @@ class ExecutionResult:
     execution_time_ms: float
     error_type: str | None = None
     error_traceback: str | None = None
+    job_token: str | None = None
 
 
 @dataclass
@@ -288,6 +295,8 @@ class FreecadBridge(ABC):
         self,
         code: str,
         timeout_ms: int = 30000,
+        echo: bool = False,
+        while_busy: bool = False,
     ) -> ExecutionResult:
         """Execute Python code in FreeCAD context.
 
@@ -297,10 +306,38 @@ class FreecadBridge(ABC):
         Args:
             code: Python code to execute.
             timeout_ms: Maximum execution time in milliseconds.
+            echo: Also print the run's output to FreeCAD's Report view.
+            while_busy: Run even while another run waits inside a modal dialog,
+                e.g. to inspect or close that dialog.
 
         Returns:
             ExecutionResult with success status, output, and any errors.
         """
+
+    async def get_output_page(
+        self,
+        job_token: str,
+        page_no: int = 0,
+        wait_ms: int = 15000,
+    ) -> dict[str, Any]:
+        """Page ``page_no`` of a run that outlasted its timeout.
+
+        Args:
+            job_token: Token from the timed-out ExecutionResult.
+            page_no: 0-based page number; ask for the next one while ``has_more``.
+            wait_ms: How long the bridge waits for new output before answering.
+
+        Returns:
+            ``{job_token, page: [{stream, text}], page_no, has_more}``, plus the
+            run's result fields on the final page, or ``error``.
+        """
+        msg = "Paged output needs the XML-RPC or socket bridge"
+        raise NotImplementedError(msg)
+
+    async def bridge_status(self) -> dict[str, Any]:
+        """The bridge's own status, answered without FreeCAD's main thread."""
+        msg = "Bridge status needs the XML-RPC or socket bridge"
+        raise NotImplementedError(msg)
 
     # =========================================================================
     # Document Management

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""FreeCAD Robust MCP Bridge Startup Script.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""FreeCAD MCP+ Startup Script.
 
 This script starts the MCP bridge in FreeCAD GUI mode. It checks if the bridge
 is already running (e.g., from workbench auto-start) before starting a new
@@ -91,7 +92,7 @@ def _start_bridge() -> None:
 
     if get_running_plugin() is not None:
         FreeCAD.Console.PrintMessage(
-            "MCP Bridge already running (started by workbench auto-start)\n"
+            "MCP+ Bridge already running (started by workbench auto-start)\n"
         )
         return
 
@@ -110,7 +111,6 @@ def _start_bridge() -> None:
             raise
 
         plugin = FreecadMCPPlugin(
-            host="localhost",
             port=socket_port,  # JSON-RPC socket port
             xmlrpc_port=xmlrpc_port,  # XML-RPC port
             enable_xmlrpc=True,
@@ -125,7 +125,7 @@ def _start_bridge() -> None:
 
         FreeCAD.Console.PrintMessage("\n")
         FreeCAD.Console.PrintMessage("=" * 50 + "\n")
-        FreeCAD.Console.PrintMessage("MCP Bridge started (via startup script)!\n")
+        FreeCAD.Console.PrintMessage("MCP+ Bridge started (via startup script)!\n")
         FreeCAD.Console.PrintMessage(f"  - XML-RPC: localhost:{xmlrpc_port}\n")
         FreeCAD.Console.PrintMessage(f"  - Socket:  localhost:{socket_port}\n")
         FreeCAD.Console.PrintMessage(
@@ -133,7 +133,7 @@ def _start_bridge() -> None:
         )
         FreeCAD.Console.PrintMessage("=" * 50 + "\n\n")
     except Exception as e:
-        FreeCAD.Console.PrintError(f"Failed to start MCP Bridge: {e}\n")
+        FreeCAD.Console.PrintError(f"Failed to start MCP+ Bridge: {e}\n")
         FreeCAD.Console.PrintError(traceback.format_exc())
 
 
@@ -160,11 +160,8 @@ try:
     _has_qapp = False
     _is_true_headless = False
 
-    try:
-        from PySide2 import QtCore, QtWidgets  # type: ignore[assignment, no-redef]
-    except ImportError:
-        with contextlib.suppress(ImportError):
-            from PySide6 import QtCore, QtWidgets  # type: ignore[assignment, no-redef]
+    with contextlib.suppress(ImportError):
+        from PySide import QtCore, QtWidgets  # type: ignore[assignment, no-redef]
 
     # Detect GUI mode vs true headless mode
     # - True headless (freecadcmd): QCoreApplication exists but NOT QApplication

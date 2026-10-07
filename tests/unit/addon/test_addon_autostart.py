@@ -195,7 +195,7 @@ class TestAutoStartBridgeFunction:
 
     def test_auto_start_bridge_logs_start_message(self, init_code: str) -> None:
         """_auto_start_bridge should log when auto-starting."""
-        assert "Auto-starting MCP Bridge" in init_code
+        assert "Auto-starting MCP+ Bridge" in init_code
 
     def test_auto_start_bridge_creates_plugin(self, init_code: str) -> None:
         """_auto_start_bridge should create a FreecadMCPPlugin instance."""

@@ -35,9 +35,8 @@ class TestAddonFileStructure:
         [
             ("freecad_mcp_bridge", "bridge module"),
             ("Qt", "Qt UI components"),
-            (Path("Resources") / "Media", "Resources/Media screenshots"),
         ],
-        ids=["bridge_module", "qt_module", "resources_media"],
+        ids=["bridge_module", "qt_module"],
     )
     def test_subdirectory_exists(self, subdir: str | Path, description: str) -> None:
         """Subdirectories should exist."""

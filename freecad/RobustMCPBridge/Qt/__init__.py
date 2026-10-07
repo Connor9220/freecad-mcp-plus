@@ -1,4 +1,8 @@
-"""Qt/PySide UI components for the Robust MCP Bridge workbench.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
+"""Qt/PySide UI components for the MCP+ workbench.
 
 This module contains Qt-based user interface components:
 - status_widget: Status bar widget showing bridge connection state

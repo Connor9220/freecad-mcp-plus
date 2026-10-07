@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """View and screenshot tools for FreeCAD Robust MCP Server.
 
 This module provides tools for controlling the 3D view and

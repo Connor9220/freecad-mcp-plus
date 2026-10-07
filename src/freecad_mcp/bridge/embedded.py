@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """Embedded bridge - runs FreeCAD in-process.
 
 This bridge imports FreeCAD directly into the Robust MCP Server process,
@@ -93,12 +97,16 @@ class EmbeddedBridge(FreecadBridge):
         self,
         code: str,
         timeout_ms: int = 30000,
+        echo: bool = False,
+        while_busy: bool = False,
     ) -> ExecutionResult:
         """Execute Python code in FreeCAD context.
 
         Args:
             code: Python code to execute.
             timeout_ms: Maximum execution time in milliseconds.
+            echo: Ignored; embedded mode has no Report view to echo to.
+            while_busy: Ignored; embedded runs are never queued.
 
         Returns:
             ExecutionResult with execution outcome.

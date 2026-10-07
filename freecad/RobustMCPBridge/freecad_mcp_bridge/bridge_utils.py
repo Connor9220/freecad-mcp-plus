@@ -1,7 +1,8 @@
-"""Shared utilities for the FreeCAD Robust MCP Bridge.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""Shared utilities for the FreeCAD MCP+.
 
 This module provides common functionality used by both blocking_bridge.py,
 startup_bridge.py, and Init.py to avoid code duplication.
@@ -91,16 +92,13 @@ class GuiWaiter:
 
         # Resolve QtCore once and store for later use
         try:
-            from PySide2 import QtCore  # type: ignore[import]
+            from PySide import QtCore  # type: ignore[import]
         except ImportError:
-            try:
-                from PySide6 import QtCore  # type: ignore[import]
-            except ImportError:
-                FreeCAD.Console.PrintError(
-                    f"{self.log_prefix}: Neither PySide2 nor PySide6 is available. "
-                    "Cannot wait for GUI - Qt is required for timer-based waiting.\n"
-                )
-                return
+            FreeCAD.Console.PrintError(
+                f"{self.log_prefix}: PySide is not available. "
+                "Cannot wait for GUI - Qt is required for timer-based waiting.\n"
+            )
+            return
 
         self._qtcore = QtCore
         self._check_timer = QtCore.QTimer()
@@ -257,7 +255,7 @@ def get_running_plugin() -> FreecadMCPPlugin | None:
             socket_port = config.get("socket_port", 9876)
 
             FreeCAD.Console.PrintMessage(
-                "\nMCP Bridge already running (from auto-start).\n"
+                "\nMCP+ Bridge already running (from auto-start).\n"
             )
             FreeCAD.Console.PrintMessage(f"  - XML-RPC: localhost:{xmlrpc_port}\n")
             FreeCAD.Console.PrintMessage(f"  - Socket: localhost:{socket_port}\n\n")

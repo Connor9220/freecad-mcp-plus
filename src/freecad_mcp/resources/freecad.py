@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileCopyrightText: 2026 Billy Huddleston <billy@ivdc.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """FreeCAD Robust MCP resources for exposing FreeCAD state.
 
 This module provides MCP resources that expose FreeCAD's current state
@@ -592,7 +597,22 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "execute_python",
                             "description": "Execute arbitrary Python code in FreeCAD's context. Use _result_ = value to return data.",
-                            "key_params": ["code", "timeout_ms"],
+                            "key_params": ["code", "timeout_ms", "echo"],
+                        },
+                        {
+                            "name": "execute_python_file",
+                            "description": "Run a .py file in FreeCAD with __file__ set and __name__ == '__main__'.",
+                            "key_params": ["file_path", "timeout_ms", "echo"],
+                        },
+                        {
+                            "name": "get_output_page",
+                            "description": "Read a run that outlasted its timeout, page by page, until has_more is false.",
+                            "key_params": ["job_token", "page_no", "wait_ms"],
+                        },
+                        {
+                            "name": "bridge_status",
+                            "description": "What the bridge is doing (busy run, modal dialog); answers even while FreeCAD is blocked.",
+                            "key_params": [],
                         },
                         {
                             "name": "get_console_output",
@@ -740,17 +760,17 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "create_prism",
                             "description": "Create Part::Prism (extruded polygon)",
-                            "key_params": ["polygon", "height"],
+                            "key_params": ["polygon_sides", "circumradius", "height"],
                         },
                         {
                             "name": "create_regular_polygon",
                             "description": "Create regular polygon face",
-                            "key_params": ["num_sides", "radius"],
+                            "key_params": ["polygon_sides", "circumradius"],
                         },
                         {
                             "name": "boolean_operation",
                             "description": "Union, cut, or intersection of two shapes",
-                            "key_params": ["operation", "object1", "object2"],
+                            "key_params": ["operation", "object1_name", "object2_name"],
                         },
                         {
                             "name": "fuse_all",
@@ -765,7 +785,11 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "shell_object",
                             "description": "Create hollow shell from solid",
-                            "key_params": ["object_name", "thickness", "faces"],
+                            "key_params": [
+                                "object_name",
+                                "thickness",
+                                "faces_to_remove",
+                            ],
                         },
                         {
                             "name": "offset_3d",
@@ -775,7 +799,11 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "slice_shape",
                             "description": "Slice object with a plane",
-                            "key_params": ["object_name", "plane"],
+                            "key_params": [
+                                "object_name",
+                                "plane_point",
+                                "plane_normal",
+                            ],
                         },
                         {
                             "name": "section_shape",
@@ -795,32 +823,37 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "make_wire",
                             "description": "Create wire from edges/curves",
-                            "key_params": ["object_names"],
+                            "key_params": ["points", "closed"],
                         },
                         {
                             "name": "make_face",
                             "description": "Create face from wire",
-                            "key_params": ["wire_name"],
+                            "key_params": ["object_name"],
                         },
                         {
                             "name": "extrude_shape",
                             "description": "Extrude shape along vector",
-                            "key_params": ["object_name", "direction", "length"],
+                            "key_params": ["object_name", "direction"],
                         },
                         {
                             "name": "revolve_shape",
                             "description": "Revolve shape around axis",
-                            "key_params": ["object_name", "axis", "angle"],
+                            "key_params": [
+                                "object_name",
+                                "axis_point",
+                                "axis_direction",
+                                "angle",
+                            ],
                         },
                         {
                             "name": "part_loft",
                             "description": "Create Part loft between shapes",
-                            "key_params": ["object_names", "solid"],
+                            "key_params": ["profile_names", "solid", "ruled"],
                         },
                         {
                             "name": "part_sweep",
                             "description": "Sweep profile along path",
-                            "key_params": ["profile_name", "path_name"],
+                            "key_params": ["profile_name", "spine_name", "solid"],
                         },
                         {
                             "name": "edit_object",
@@ -835,12 +868,12 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "set_placement",
                             "description": "Set object position and rotation",
-                            "key_params": ["object_name", "x", "y", "z"],
+                            "key_params": ["object_name", "position", "rotation"],
                         },
                         {
                             "name": "scale_object",
                             "description": "Scale an object by a factor",
-                            "key_params": ["object_name", "scale_factor"],
+                            "key_params": ["object_name", "scale"],
                         },
                         {
                             "name": "rotate_object",
@@ -901,7 +934,12 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "add_sketch_circle",
                             "description": "Add circle to sketch",
-                            "key_params": ["sketch_name", "x", "y", "radius"],
+                            "key_params": [
+                                "sketch_name",
+                                "center_x",
+                                "center_y",
+                                "radius",
+                            ],
                         },
                         {
                             "name": "add_sketch_line",
@@ -950,11 +988,11 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                             "description": "Add slot (rounded rectangle) to sketch",
                             "key_params": [
                                 "sketch_name",
-                                "x1",
-                                "y1",
-                                "x2",
-                                "y2",
-                                "width",
+                                "center1_x",
+                                "center1_y",
+                                "center2_x",
+                                "center2_y",
+                                "radius",
                             ],
                         },
                         {
@@ -1034,7 +1072,7 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "create_datum_plane",
                             "description": "Create reference plane for sketches",
-                            "key_params": ["body_name", "offset", "plane"],
+                            "key_params": ["body_name", "base_plane", "offset"],
                         },
                         {
                             "name": "create_datum_line",
@@ -1193,7 +1231,13 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "add_sketch_constraint",
                             "description": "Add generic constraint (flexible API)",
-                            "key_params": ["sketch_name", "constraint_type", "params"],
+                            "key_params": [
+                                "sketch_name",
+                                "constraint_type",
+                                "geometry1",
+                                "geometry2",
+                                "value",
+                            ],
                         },
                         {
                             "name": "constrain_horizontal",
@@ -1210,56 +1254,71 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                             "description": "Make two points coincident",
                             "key_params": [
                                 "sketch_name",
-                                "geo1",
+                                "geometry1",
                                 "point1",
-                                "geo2",
+                                "geometry2",
                                 "point2",
                             ],
                         },
                         {
                             "name": "constrain_parallel",
                             "description": "Make lines parallel",
-                            "key_params": ["sketch_name", "geo1", "geo2"],
+                            "key_params": ["sketch_name", "geometry1", "geometry2"],
                         },
                         {
                             "name": "constrain_perpendicular",
                             "description": "Make lines perpendicular",
-                            "key_params": ["sketch_name", "geo1", "geo2"],
+                            "key_params": ["sketch_name", "geometry1", "geometry2"],
                         },
                         {
                             "name": "constrain_tangent",
                             "description": "Make curves tangent",
-                            "key_params": ["sketch_name", "geo1", "geo2"],
+                            "key_params": ["sketch_name", "geometry1", "geometry2"],
                         },
                         {
                             "name": "constrain_equal",
                             "description": "Make lengths/radii equal",
-                            "key_params": ["sketch_name", "geo1", "geo2"],
+                            "key_params": ["sketch_name", "geometry1", "geometry2"],
                         },
                         {
                             "name": "constrain_distance",
                             "description": "Set distance between elements",
-                            "key_params": ["sketch_name", "value", "geo1", "point1"],
+                            "key_params": ["sketch_name", "distance", "geometry1"],
                         },
                         {
                             "name": "constrain_distance_x",
                             "description": "Set horizontal distance",
-                            "key_params": ["sketch_name", "value", "geo1", "point1"],
+                            "key_params": [
+                                "sketch_name",
+                                "distance",
+                                "geometry",
+                                "point",
+                            ],
                         },
                         {
                             "name": "constrain_distance_y",
                             "description": "Set vertical distance",
-                            "key_params": ["sketch_name", "value", "geo1", "point1"],
+                            "key_params": [
+                                "sketch_name",
+                                "distance",
+                                "geometry",
+                                "point",
+                            ],
                         },
                         {
                             "name": "constrain_radius",
                             "description": "Set circle/arc radius",
-                            "key_params": ["sketch_name", "geometry_index", "value"],
+                            "key_params": ["sketch_name", "geometry_index", "radius"],
                         },
                         {
                             "name": "constrain_angle",
                             "description": "Set angle between lines",
-                            "key_params": ["sketch_name", "geo1", "geo2", "angle"],
+                            "key_params": [
+                                "sketch_name",
+                                "geometry1",
+                                "geometry2",
+                                "angle",
+                            ],
                         },
                         {
                             "name": "constrain_fix",
@@ -1302,13 +1361,13 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                     "tools": [
                         {
                             "name": "get_screenshot",
-                            "description": "Capture 3D view screenshot (GUI only)",
-                            "key_params": ["file_path", "width", "height"],
+                            "description": "Capture 3D view screenshot as base64 PNG (GUI only)",
+                            "key_params": ["view_angle", "width", "height"],
                         },
                         {
                             "name": "set_view_angle",
                             "description": "Set camera to standard views",
-                            "key_params": ["angle"],
+                            "key_params": ["view_angle"],
                         },
                         {
                             "name": "fit_all",
@@ -1328,7 +1387,7 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "set_camera_position",
                             "description": "Set exact camera position and orientation",
-                            "key_params": ["position", "direction", "up_vector"],
+                            "key_params": ["position", "look_at"],
                         },
                         {
                             "name": "set_object_visibility",
@@ -1343,7 +1402,7 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "set_object_color",
                             "description": "Change object color (GUI only)",
-                            "key_params": ["object_name", "r", "g", "b"],
+                            "key_params": ["object_name", "color"],
                         },
                         {
                             "name": "list_workbenches",
@@ -1438,7 +1497,7 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "create_macro",
                             "description": "Create new macro",
-                            "key_params": ["macro_name", "code"],
+                            "key_params": ["name", "code"],
                         },
                         {
                             "name": "read_macro",
@@ -1453,7 +1512,7 @@ Check with: sketch.solve() returns DoF count (0 = fully constrained)""",
                         {
                             "name": "create_macro_from_template",
                             "description": "Create macro from predefined template",
-                            "key_params": ["macro_name", "template_name"],
+                            "key_params": ["name", "template"],
                         },
                     ],
                 },

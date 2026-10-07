@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """Macro management tools for FreeCAD Robust MCP Server.
 
 This module provides tools for managing FreeCAD macros:
@@ -265,7 +269,7 @@ doc.recompute()
 print("Created sketch with rectangle")
 """,
             "gui": """
-from PySide2 import QtWidgets
+from PySide import QtWidgets
 
 class MacroDialog(QtWidgets.QDialog):
     def __init__(self):

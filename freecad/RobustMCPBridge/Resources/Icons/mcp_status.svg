@@ -1,57 +1,174 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <!-- Transparent background (allows Qt pressed state to show through) -->
-
-  <!-- Bridge Structure with light outline -->
-  <!-- Bridge deck -->
-  <rect x="4" y="40" width="56" height="5" rx="1" fill="#8b7355" stroke="#d4c4b0" stroke-width="1.5"/>
-  <!-- Bridge railings -->
-  <rect x="4" y="37" width="56" height="2" rx="0.5" fill="#b89c7a" stroke="#d4c4b0" stroke-width="0.5"/>
-  <!-- Bridge supports/pillars -->
-  <rect x="8" y="45" width="6" height="8" fill="#7a6450" stroke="#d4c4b0" stroke-width="1"/>
-  <rect x="50" y="45" width="6" height="8" fill="#7a6450" stroke="#d4c4b0" stroke-width="1"/>
-  <!-- Bridge arch underneath -->
-  <path d="M 14 53 Q 32 47 50 53" fill="none" stroke="#7a6450" stroke-width="2.5"/>
-  <path d="M 14 53 Q 32 47 50 53" fill="none" stroke="#d4c4b0" stroke-width="1" opacity="0.6"/>
-
-  <!-- Robot SITTING on bridge edge, feet dangling -->
-  <!-- Robot body (sitting position - shorter/compressed) with light outline -->
-  <rect x="24" y="24" width="16" height="10" rx="2" fill="#5a9ee8" stroke="#e0f0ff" stroke-width="1.5"/>
-  <!-- Robot head with light outline -->
-  <rect x="26" y="14" width="12" height="10" rx="2" fill="#5a9ee8" stroke="#e0f0ff" stroke-width="1.5"/>
-  <!-- Robot face plate -->
-  <rect x="28" y="16" width="8" height="6" rx="1" fill="#f0f8ff" stroke="#c0e0ff" stroke-width="0.5"/>
-  <!-- Robot eyes (looking curious) -->
-  <circle cx="30" cy="19" r="1.5" fill="#2c5aa0"/>
-  <circle cx="34" cy="19" r="1.5" fill="#2c5aa0"/>
-  <!-- Robot antenna with YELLOW ball (matches status color) with light outline -->
-  <line x1="32" y1="14" x2="32" y2="9" stroke="#3c6ab0" stroke-width="2" stroke-linecap="round"/>
-  <circle cx="32" cy="8" r="3" fill="#f1c40f" stroke="#fff8c0" stroke-width="1"/>
-  <!-- Robot arms (resting on bridge) -->
-  <rect x="18" y="28" width="6" height="4" rx="1.5" fill="#4a8bd8" stroke="#c0e0ff" stroke-width="0.5"/>
-  <rect x="40" y="28" width="6" height="4" rx="1.5" fill="#4a8bd8" stroke="#c0e0ff" stroke-width="0.5"/>
-  <!-- Robot legs (dangling over edge) -->
-  <rect x="26" y="34" width="4" height="12" rx="1" fill="#4a8bd8" stroke="#c0e0ff" stroke-width="0.5"/>
-  <rect x="34" y="34" width="4" height="12" rx="1" fill="#4a8bd8" stroke="#c0e0ff" stroke-width="0.5"/>
-  <!-- Robot feet -->
-  <rect x="25" y="45" width="6" height="3" rx="1" fill="#3c6ab0" stroke="#c0e0ff" stroke-width="0.5"/>
-  <rect x="33" y="45" width="6" height="3" rx="1" fill="#3c6ab0" stroke="#c0e0ff" stroke-width="0.5"/>
-
-  <!-- Bold Question marks in TOP corners with light stroke -->
-  <text x="9" y="16" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="900" fill="#f1c40f" stroke="#fff8c0" stroke-width="1.5" text-anchor="middle">?</text>
-  <text x="55" y="16" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="900" fill="#f1c40f" stroke="#fff8c0" stroke-width="1.5" text-anchor="middle">?</text>
-
-  <!-- Yellow Data Flow (river under bridge - status check) -->
-  <!-- Data stream background -->
-  <path d="M 0 60 Q 32 55 64 60" fill="none" stroke="#f1c40f" stroke-width="4" opacity="0.4"/>
-  <!-- Left arrow -->
-  <path d="M 6 59 L 16 59" stroke="#f1c40f" stroke-width="2.5" stroke-linecap="round"/>
-  <polygon points="6,59 11,56 11,62" fill="#f1c40f" stroke="#fff8c0" stroke-width="0.5"/>
-  <!-- Right arrow -->
-  <path d="M 48 59 L 58 59" stroke="#f1c40f" stroke-width="2.5" stroke-linecap="round"/>
-  <polygon points="58,59 53,56 53,62" fill="#f1c40f" stroke="#fff8c0" stroke-width="0.5"/>
-  <!-- Center data dots (checking) -->
-  <circle cx="26" cy="57" r="2" fill="#f1c40f" stroke="#fff8c0" stroke-width="0.5"/>
-  <circle cx="32" cy="56" r="2" fill="#f1c40f" stroke="#fff8c0" stroke-width="0.5"/>
-  <circle cx="38" cy="57" r="2" fill="#f1c40f" stroke="#fff8c0" stroke-width="0.5"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64"
+   height="64"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="svg54"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs17">
+    <linearGradient
+       id="gg"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#eeeeec"
+         id="stop2" />
+      <stop
+         offset="1"
+         stop-color="#888a85"
+         id="stop4" />
+    </linearGradient>
+    <linearGradient
+       id="gh"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#729fcf"
+         id="stop7" />
+      <stop
+         offset="1"
+         stop-color="#204a87"
+         id="stop9" />
+    </linearGradient>
+    <linearGradient
+       id="gp"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#8ae234"
+         id="stop12" />
+      <stop
+         offset="1"
+         stop-color="#4e9a06"
+         id="stop14" />
+    </linearGradient>
+  </defs>
+  <path
+     d="M26 9V4.5"
+     stroke="#555753"
+     stroke-width="2.6"
+     id="path19" />
+  <circle
+     cx="26"
+     cy="4.2"
+     r="3.4"
+     fill="#ef2929"
+     stroke="#a40000"
+     stroke-width="1.4"
+     id="circle21" />
+  <rect
+     x="2.5"
+     y="21"
+     width="5"
+     height="13"
+     rx="2"
+     fill="#a9aca5"
+     stroke="#2e3436"
+     stroke-width="1.6"
+     id="rect23" />
+  <rect
+     x="44.5"
+     y="21"
+     width="5"
+     height="13"
+     rx="2"
+     fill="#a9aca5"
+     stroke="#2e3436"
+     stroke-width="1.6"
+     id="rect25" />
+  <rect
+     x="6"
+     y="9"
+     width="40"
+     height="37"
+     rx="9"
+     fill="url(#gh)"
+     stroke="#0b1e3a"
+     stroke-width="2.2"
+     id="rect27" />
+  <path
+     d="M12 14h28"
+     stroke="#fff"
+     stroke-opacity="0.4"
+     stroke-width="2"
+     stroke-linecap="round"
+     id="path29" />
+  <rect
+     x="10.5"
+     y="19"
+     width="31"
+     height="13"
+     rx="6.5"
+     fill="#0b1e3a"
+     id="rect31" />
+  <circle
+     cx="19"
+     cy="25.5"
+     r="3.6"
+     fill="#8ae234"
+     id="circle33" />
+  <circle
+     cx="33"
+     cy="25.5"
+     r="3.6"
+     fill="#8ae234"
+     id="circle35" />
+  <path
+     d="M18 38.5q8 4 16 0"
+     fill="none"
+     stroke="#fff"
+     stroke-width="2.4"
+     stroke-linecap="round"
+     id="path37" />
+  <defs
+     id="defs44">
+    <linearGradient
+       id="bb"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#729fcf"
+         id="stop39" />
+      <stop
+         offset="1"
+         stop-color="#204a87"
+         id="stop41" />
+    </linearGradient>
+  </defs>
+  <g
+     transform="translate(47 47)"
+     id="g52">
+    <circle
+       r="15"
+       fill="url(#bb)"
+       stroke="#0b1e3a"
+       stroke-width="2.2"
+       id="circle46" />
+    <circle
+       cy="-7"
+       r="2.4"
+       fill="#fff"
+       id="circle48" />
+    <path
+       d="M0 -2V8"
+       stroke="#fff"
+       stroke-width="4.2"
+       stroke-linecap="round"
+       id="path50" />
+  </g>
 </svg>

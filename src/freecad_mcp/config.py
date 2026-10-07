@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """Configuration management for FreeCAD Robust MCP Server.
 
 This module handles all configuration settings for the Robust MCP Server,
@@ -51,6 +55,8 @@ class ServerConfig(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # A shared .env may hold other tools' variables; don't fail on them
+        extra="ignore",
     )
 
     # FreeCAD connection settings
@@ -76,6 +82,12 @@ class ServerConfig(BaseSettings):
         int,
         Field(ge=1, le=65535, description="XML-RPC server port (neka-nat compatible)"),
     ] = 9875
+    auth_token: Annotated[
+        str | None,
+        Field(
+            description="Token the bridge asks for, when its Auth Token preference is set"
+        ),
+    ] = None
 
     # Execution limits
     timeout_ms: Annotated[

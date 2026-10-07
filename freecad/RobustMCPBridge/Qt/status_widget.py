@@ -1,7 +1,8 @@
-"""Status bar widget for MCP Bridge status display.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""Status bar widget for MCP+ Bridge status display.
 
 This module provides a permanent status widget for FreeCAD's status bar
 that shows the current MCP bridge connection status without being
@@ -35,11 +36,7 @@ def _is_main_thread() -> bool:
         True if on main thread, False otherwise.
     """
     try:
-        # Try to import Qt (PySide6 first, then PySide2 as fallback)
-        try:
-            from PySide6 import QtCore, QtWidgets
-        except ImportError:
-            from PySide2 import QtCore, QtWidgets  # type: ignore[no-redef]
+        from PySide import QtCore, QtWidgets
 
         # Get the QApplication instance
         app = QtWidgets.QApplication.instance()
@@ -81,7 +78,7 @@ def _check_main_thread(operation: str) -> bool:
 
 
 class MCPStatusWidget:
-    """Manages the MCP Bridge status display in FreeCAD's status bar."""
+    """Manages the MCP+ Bridge status display in FreeCAD's status bar."""
 
     def __init__(self) -> None:
         """Initialize the status widget."""
@@ -121,7 +118,7 @@ class MCPStatusWidget:
             # Create the status label widget
             self._widget = QtWidgets.QLabel()
             self._widget.setObjectName("mcp_bridge_status_widget")
-            self._widget.setToolTip("MCP Bridge Status")
+            self._widget.setToolTip("MCP+ Bridge Status")
 
             # Style it to stand out slightly
             self._widget.setStyleSheet(
@@ -191,7 +188,7 @@ class MCPStatusWidget:
             "}"
         )
         self._widget.setToolTip(
-            f"MCP Bridge is running\n"
+            f"MCP+ Bridge is running\n"
             f"XML-RPC: localhost:{xmlrpc_port}\n"
             f"Socket: localhost:{socket_port}\n"
             f"Requests processed: {request_count}"
@@ -216,7 +213,7 @@ class MCPStatusWidget:
             "font-size: 11px; "
             "}"
         )
-        self._widget.setToolTip("MCP Bridge is not running")
+        self._widget.setToolTip("MCP+ Bridge is not running")
 
     def set_starting(self) -> None:
         """Update the widget to show starting status."""
@@ -237,7 +234,7 @@ class MCPStatusWidget:
             "font-size: 11px; "
             "}"
         )
-        self._widget.setToolTip("MCP Bridge is starting...")
+        self._widget.setToolTip("MCP+ Bridge is starting...")
 
     def set_error(self, message: str) -> None:
         """Update the widget to show error status.
@@ -262,7 +259,7 @@ class MCPStatusWidget:
             "font-size: 11px; "
             "}"
         )
-        self._widget.setToolTip(f"MCP Bridge Error: {message}")
+        self._widget.setToolTip(f"MCP+ Bridge Error: {message}")
 
 
 def get_status_widget() -> MCPStatusWidget:

@@ -278,3 +278,100 @@ class TestExecutionTools:
 
         assert result["freecad"]["gui_available"] is False
         assert result["freecad"]["is_headless"] is True
+
+
+class TestPagedExecutionTools:
+    """Tools for runs that outlast their timeout, files, and bridge status."""
+
+    @pytest.fixture
+    def tools_and_bridge(self):
+        """Register execution tools against a mock bridge."""
+        from freecad_mcp.tools.execution import register_execution_tools
+
+        mcp = MagicMock()
+        registered = {}
+
+        def tool_decorator():
+            def wrapper(func):
+                registered[func.__name__] = func
+                return func
+
+            return wrapper
+
+        mcp.tool = tool_decorator
+        bridge = AsyncMock()
+
+        async def get_bridge():
+            return bridge
+
+        register_execution_tools(mcp, get_bridge)
+        return registered, bridge
+
+    @pytest.mark.asyncio
+    async def test_timed_out_run_returns_job_token(self, tools_and_bridge):
+        """A run still going after the timeout answers with its job token."""
+        tools, bridge = tools_and_bridge
+        bridge.execute_python = AsyncMock(
+            return_value=ExecutionResult(
+                success=False,
+                result=None,
+                stdout="",
+                stderr="Still running",
+                execution_time_ms=1000,
+                error_type="TimeoutError",
+                job_token="abc",  # noqa: S106 - a job id, not a secret
+            )
+        )
+        result = await tools["execute_python"](
+            code="slow()", timeout_ms=1000, echo=True
+        )
+        assert result["job_token"] == "abc"  # noqa: S105
+        assert result["still_running"] is True
+        bridge.execute_python.assert_called_once_with("slow()", 1000, True, False)
+
+    @pytest.mark.asyncio
+    async def test_finished_run_has_no_job_token(self, tools_and_bridge):
+        """A run that finished in time carries no token."""
+        tools, bridge = tools_and_bridge
+        bridge.execute_python = AsyncMock(
+            return_value=ExecutionResult(
+                success=True, result=1, stdout="", stderr="", execution_time_ms=1
+            )
+        )
+        result = await tools["execute_python"](code="_result_ = 1")
+        assert "job_token" not in result
+
+    @pytest.mark.asyncio
+    async def test_get_output_page_passes_through(self, tools_and_bridge):
+        """get_output_page asks the bridge for the page."""
+        tools, bridge = tools_and_bridge
+        bridge.get_output_page = AsyncMock(return_value={"page": [], "has_more": False})
+        await tools["get_output_page"](job_token="abc", page_no=2, wait_ms=500)  # noqa: S106
+        bridge.get_output_page.assert_called_once_with("abc", 2, 500)
+
+    @pytest.mark.asyncio
+    async def test_execute_python_file_runs_as_main(self, tools_and_bridge, tmp_path):
+        """The generated code runs the file with __file__ and __name__ set."""
+        tools, bridge = tools_and_bridge
+        bridge.execute_python = AsyncMock(
+            return_value=ExecutionResult(
+                success=True, result=None, stdout="", stderr="", execution_time_ms=1
+            )
+        )
+        script = tmp_path / "job.py"
+        script.write_text("_result_ = (__name__, __file__)\n")
+        await tools["execute_python_file"](file_path=str(script))
+        code = bridge.execute_python.call_args.args[0]
+        namespace = {"FreeCAD": None, "App": None, "FreeCADGui": None, "Gui": None}
+        exec(code, namespace)  # noqa: S102 - runs the generated wrapper on a temp file
+        assert namespace["_result_"] == ("__main__", str(script))
+
+    @pytest.mark.asyncio
+    async def test_bridge_status_warns_on_old_addon(self, tools_and_bridge):
+        """An add-on below the expected protocol gets a warning."""
+        tools, bridge = tools_and_bridge
+        bridge.bridge_status = AsyncMock(return_value={"protocol": 1})
+        status = await tools["bridge_status"]()
+        assert "warning" in status
+        bridge.bridge_status = AsyncMock(return_value={"protocol": 2})
+        assert "warning" not in await tools["bridge_status"]()

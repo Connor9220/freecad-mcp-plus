@@ -1,7 +1,8 @@
-"""Preferences page for FreeCAD Preferences dialog integration.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""Preferences page for FreeCAD Preferences dialog integration.
 
 This module provides a QWidget-based preferences page that integrates
 with FreeCAD's main Preferences dialog (Edit → Preferences).
@@ -39,11 +40,11 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
 
         # Title
-        title = QtWidgets.QLabel("<h2>Robust MCP Bridge</h2>")
+        title = QtWidgets.QLabel("<h2>MCP+</h2>")
         layout.addWidget(title)
 
         description = QtWidgets.QLabel(
-            "Configure the MCP Bridge for AI assistant integration with FreeCAD."
+            "Configure the MCP+ Bridge for AI assistant integration with FreeCAD."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -204,6 +205,6 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
             import FreeCAD
 
             FreeCAD.Console.PrintMessage(
-                "MCP Bridge ports changed. "
+                "MCP+ Bridge ports changed. "
                 "If the bridge is running, restart it for changes to take effect.\n"
             )

@@ -129,6 +129,7 @@ class TestLifespan:
         mock_config.mode = FreecadMode.XMLRPC
         mock_config.socket_host = "localhost"
         mock_config.xmlrpc_port = 9875
+        mock_config.auth_token = None
 
         mock_xmlrpc_bridge = AsyncMock()
         mock_xmlrpc_bridge.get_freecad_version = AsyncMock(
@@ -145,7 +146,9 @@ class TestLifespan:
             mock_server = MagicMock()
 
             async with server_module.lifespan(mock_server):
-                mock_xmlrpc_class.assert_called_once_with(host="localhost", port=9875)
+                mock_xmlrpc_class.assert_called_once_with(
+                    host="localhost", port=9875, auth_token=None
+                )
                 mock_xmlrpc_bridge.connect.assert_called_once()
 
             mock_xmlrpc_bridge.disconnect.assert_called_once()
@@ -159,6 +162,7 @@ class TestLifespan:
         mock_config.mode = FreecadMode.SOCKET
         mock_config.socket_host = "localhost"
         mock_config.socket_port = 9876
+        mock_config.auth_token = None
 
         mock_socket_bridge = AsyncMock()
         mock_socket_bridge.get_freecad_version = AsyncMock(
@@ -175,7 +179,9 @@ class TestLifespan:
             mock_server = MagicMock()
 
             async with server_module.lifespan(mock_server):
-                mock_socket_class.assert_called_once_with(host="localhost", port=9876)
+                mock_socket_class.assert_called_once_with(
+                    host="localhost", port=9876, auth_token=None
+                )
                 mock_socket_bridge.connect.assert_called_once()
 
             mock_socket_bridge.disconnect.assert_called_once()
@@ -207,7 +213,7 @@ class TestLifespan:
             async with server_module.lifespan(mock_server):
                 # Warning should be logged
                 mock_warning.assert_called_once()
-                assert "Could not get FreeCAD version" in str(mock_warning.call_args)
+                assert "FreeCAD not reachable at startup" in str(mock_warning.call_args)
 
 
 class TestRegisterAllComponents:

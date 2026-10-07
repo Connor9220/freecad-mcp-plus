@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """FreeCAD Robust MCP Server - Main entry point.
 
 This module provides the main Robust MCP Server implementation for FreeCAD
@@ -38,6 +42,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP
@@ -80,6 +85,21 @@ async def get_bridge() -> "FreecadBridge":
     if _bridge is None:
         msg = "FreeCAD bridge not initialized"
         raise RuntimeError(msg)
+    # Connect lazily and reconnect after FreeCAD restarts, so the server does
+    # not have to be restarted when FreeCAD was not running at startup.
+    if not getattr(_bridge, "_connected", True):
+        try:
+            await _bridge.connect()
+            logger.info("FreeCAD bridge connected")
+        except Exception as e:
+            repo = os.environ.get("FREECAD_CAM_REPO")
+            hint = (
+                f" Start it with: fc-xephyr start {Path(repo).name}"
+                if repo
+                else " Start FreeCAD with the MCP+ running."
+            )
+            msg = f"FreeCAD is not reachable ({e}).{hint}"
+            raise RuntimeError(msg) from e
     return _bridge
 
 
@@ -115,6 +135,7 @@ async def lifespan(_server: FastMCP) -> AsyncIterator[None]:
         _bridge = XmlRpcBridge(
             host=config.socket_host,
             port=config.xmlrpc_port,
+            auth_token=config.auth_token,
         )
         logger.info(
             "Using XML-RPC bridge: %s:%d", config.socket_host, config.xmlrpc_port
@@ -126,16 +147,15 @@ async def lifespan(_server: FastMCP) -> AsyncIterator[None]:
         _bridge = SocketBridge(
             host=config.socket_host,
             port=config.socket_port,
+            auth_token=config.auth_token,
         )
         logger.info(
             "Using socket bridge: %s:%d", config.socket_host, config.socket_port
         )
 
-    await _bridge.connect()
-    logger.info("FreeCAD bridge connected")
-
-    # Log FreeCAD version
     try:
+        await _bridge.connect()
+        logger.info("FreeCAD bridge connected")
         version = await _bridge.get_freecad_version()
         logger.info(
             "FreeCAD %s (GUI: %s)",
@@ -143,7 +163,10 @@ async def lifespan(_server: FastMCP) -> AsyncIterator[None]:
             "available" if version.get("gui_available") else "headless",
         )
     except Exception as e:
-        logger.warning("Could not get FreeCAD version: %s", e)
+        # Keep serving: tools connect on first use (see get_bridge)
+        logger.warning(
+            "FreeCAD not reachable at startup, will connect on first use: %s", e
+        )
 
     try:
         yield
@@ -230,6 +253,7 @@ async def check_freecad_connection(
             bridge = XmlRpcBridge(
                 host=config.socket_host,
                 port=config.xmlrpc_port,
+                auth_token=config.auth_token,
             )
             print(f"  Host: {config.socket_host}:{config.xmlrpc_port}")
         else:
@@ -238,6 +262,7 @@ async def check_freecad_connection(
             bridge = SocketBridge(
                 host=config.socket_host,
                 port=config.socket_port,
+                auth_token=config.auth_token,
             )
             print(f"  Host: {config.socket_host}:{config.socket_port}")
 
@@ -319,9 +344,9 @@ Examples:
   FREECAD_SOCKET_HOST=192.168.1.100 freecad-mcp
 
 Prerequisites:
-  The FreeCAD Robust MCP Bridge must be running before starting this server.
+  The FreeCAD MCP+ must be running before starting this server.
   Start it via:
-    - FreeCAD GUI: Install Robust MCP Bridge workbench, enable auto-start
+    - FreeCAD GUI: Install MCP+ workbench, enable auto-start
     - Headless: just freecad::run-headless
     - Development: just freecad::run-gui
 """,

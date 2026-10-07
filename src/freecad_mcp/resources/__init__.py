@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
+
 """MCP resource implementations for FreeCAD.
 
 This package contains all MCP resource definitions for querying FreeCAD state.

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-r"""Blocking FreeCAD Robust MCP Bridge Server.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+r"""Blocking FreeCAD MCP+ Server.
 
 This script starts the MCP bridge server and blocks with run_forever().
 It works with both freecad (GUI) and freecadcmd (headless) modes.
@@ -82,7 +83,6 @@ if plugin is None:
 
     # Create and run the plugin
     plugin = FreecadMCPPlugin(
-        host="localhost",
         port=socket_port,  # JSON-RPC socket port
         xmlrpc_port=xmlrpc_port,  # XML-RPC port
         enable_xmlrpc=True,
@@ -100,7 +100,7 @@ actual_socket_port = plugin.socket_port
 print("", flush=True)
 print("=" * 60, flush=True)
 gui_mode = "GUI" if FreeCAD.GuiUp else "headless"
-print(f"MCP Bridge started in {gui_mode} mode!", flush=True)
+print(f"MCP+ Bridge started in {gui_mode} mode!", flush=True)
 print(f"  - XML-RPC: localhost:{actual_xmlrpc_port}", flush=True)
 print(f"  - Socket: localhost:{actual_socket_port}", flush=True)
 print("", flush=True)

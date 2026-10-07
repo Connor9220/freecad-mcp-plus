@@ -1,4 +1,9 @@
-"""FreeCAD Robust MCP Bridge Plugin - Socket Server with Queue-based Thread Safety.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileCopyrightText: 2026 Billy Huddleston <billy@ivdc.com>
+# SPDX-FileNotice: Part of MCP+.
+
+"""FreeCAD MCP+ Plugin - Socket Server with Queue-based Thread Safety.
 
 This module provides a socket server that runs inside FreeCAD to handle
 MCP bridge requests. It must be executed within FreeCAD's Python environment.
@@ -21,10 +26,12 @@ import asyncio
 import atexit
 import contextlib
 import errno
-import io
+import hmac
 import json
 import os
 import queue
+import re
+import socketserver
 import sys
 import threading
 import time
@@ -33,7 +40,35 @@ import uuid
 import weakref
 import xmlrpc.server
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+try:
+    from .jobs import (
+        DEFAULT_PAGE_CHARS,
+        DEFAULT_PAGE_WAIT_MS,
+        Job,
+        JobRegistry,
+        JobStream,
+    )
+except ImportError:  # loaded as a plain module by the headless runners
+    from jobs import (
+        DEFAULT_PAGE_CHARS,
+        DEFAULT_PAGE_WAIT_MS,
+        Job,
+        JobRegistry,
+        JobStream,
+    )
+
+# Longest execution an XML-RPC caller may ask for
+MAX_EXECUTE_TIMEOUT_MS = 1_800_000
+# Longest a single get_output_page call waits for output
+MAX_PAGE_WAIT_MS = 60_000
+# Bumped when the bridge gains calls the MCP server relies on (2: jobs, status, auth)
+BRIDGE_PROTOCOL = 2
+PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/RobustMCPBridge"
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 # Global registry of active servers for cleanup on Python exit
 # Uses weak references to avoid preventing garbage collection
@@ -125,7 +160,7 @@ def _get_qt_core() -> Any:
     """Get the QtCore module if GUI mode is available.
 
     This helper checks if FreeCAD is available with GUI enabled and
-    attempts to import QtCore from PySide2 or PySide6.
+    imports QtCore through FreeCAD's PySide wrapper.
 
     Returns:
         The QtCore module if available in GUI mode, None otherwise.
@@ -133,18 +168,35 @@ def _get_qt_core() -> Any:
     if not (FREECAD_AVAILABLE and FreeCAD.GuiUp):
         return None
 
-    # Try PySide2 first, then PySide6
     with contextlib.suppress(ImportError):
-        from PySide2 import QtCore
-
-        return QtCore
-
-    with contextlib.suppress(ImportError):
-        from PySide6 import QtCore
+        from PySide import QtCore
 
         return QtCore
 
     return None
+
+
+def _addon_version() -> str | None:
+    """The version stated in the add-on's package.xml, if it can be found."""
+    for parent in Path(__file__).resolve().parents:
+        package_xml = parent / "package.xml"
+        if package_xml.is_file():
+            match = re.search(
+                r"<version>([^<]+)</version>", package_xml.read_text("utf-8")
+            )
+            return match.group(1).strip() if match else None
+    return None
+
+
+def _connection_preferences() -> tuple[str, str]:
+    """Bind host and auth token from the environment or FreeCAD's preferences."""
+    host = os.environ.get("FREECAD_MCP_BIND_HOST", "")
+    token = os.environ.get("FREECAD_MCP_AUTH_TOKEN", "")
+    if FREECAD_AVAILABLE:
+        params = FreeCAD.ParamGet(PARAM_PATH)
+        host = host or params.GetString("BindHost", "")
+        token = token or params.GetString("AuthToken", "")
+    return host or "localhost", token
 
 
 class ExecutionRequest:
@@ -155,6 +207,8 @@ class ExecutionRequest:
         code: str,
         timeout_ms: int = 30000,
         request_id: str | None = None,
+        job: Job | None = None,
+        echo: bool = False,
     ) -> None:
         """Initialize execution request.
 
@@ -162,10 +216,14 @@ class ExecutionRequest:
             code: Python code to execute.
             timeout_ms: Execution timeout in milliseconds.
             request_id: Optional request ID for tracking.
+            job: The job collecting the run's output.
+            echo: Also print the run's output to FreeCAD's Report view.
         """
         self.code = code
         self.timeout_ms = timeout_ms
         self.request_id = request_id
+        self.job = job or Job(code)
+        self.echo = echo
         self.result: dict[str, Any] | None = None
         self.completed = threading.Event()
 
@@ -185,22 +243,34 @@ class FreecadMCPPlugin:
 
     def __init__(
         self,
-        host: str = "localhost",
+        host: str | None = None,
         port: int = DEFAULT_SOCKET_PORT,
         xmlrpc_port: int = DEFAULT_XMLRPC_PORT,
         enable_xmlrpc: bool = True,
+        auth_token: str | None = None,
     ) -> None:
         """Initialize the plugin.
 
         Args:
-            host: Hostname to bind to.
+            host: Hostname to bind to; from the preferences when not given.
             port: Port for JSON-RPC socket server.
             xmlrpc_port: Port for XML-RPC server.
             enable_xmlrpc: Whether to enable XML-RPC server.
+            auth_token: Token callers must present; from the preferences when not given.
         """
         # Generate unique instance ID for this server
         self._instance_id = str(uuid.uuid4())
 
+        pref_host, pref_token = _connection_preferences()
+        host = host or pref_host
+        self._auth_token = pref_token if auth_token is None else auth_token
+        if host not in LOOPBACK_HOSTS and not self._auth_token:
+            # Anyone who can reach the port can run code in FreeCAD: never without a token
+            if FREECAD_AVAILABLE:
+                FreeCAD.Console.PrintWarning(
+                    f"MCP+ Bridge: binding to {host} needs an auth token; using localhost.\n"
+                )
+            host = "localhost"
         self._host = host
         self._port = port
         self._xmlrpc_port = xmlrpc_port
@@ -218,9 +288,20 @@ class FreecadMCPPlugin:
 
         # Queue-based execution for thread safety (learned from neka-nat)
         self._request_queue: queue.Queue[ExecutionRequest] = queue.Queue()
+        # Runs allowed in while another run waits inside a modal dialog (to inspect or close it)
+        self._nested_queue: queue.Queue[ExecutionRequest] = queue.Queue()
         self._timer = None
+        # Second timer: Qt never re-fires a timer whose handler is still running, so
+        # while a run sits in a modal dialog only this one keeps ticking
+        self._watch_timer = None
         self._queue_thread: threading.Thread | None = None
         self._headless = False
+
+        # Runs whose output is still being read, and what the main thread is doing
+        self._jobs = JobRegistry()
+        self._busy_job: Job | None = None
+        self._last_tick: float | None = None
+        self._modal_title: str | None = None
 
         # Status bar tracking
         self._status_timer = None
@@ -348,7 +429,7 @@ class FreecadMCPPlugin:
 
         if FREECAD_AVAILABLE:
             FreeCAD.Console.PrintMessage(
-                f"MCP Bridge started (Instance ID: {self._instance_id}):\n"
+                f"MCP+ Bridge started (Instance ID: {self._instance_id}):\n"
             )
             FreeCAD.Console.PrintMessage(f"  - JSON-RPC: {self._host}:{self._port}\n")
             if self._enable_xmlrpc:
@@ -380,6 +461,12 @@ class FreecadMCPPlugin:
                 self._timer.timeout.disconnect()
                 self._timer.deleteLater()
             self._timer = None
+        if self._watch_timer:
+            with contextlib.suppress(Exception):
+                self._watch_timer.stop()
+                self._watch_timer.timeout.disconnect()
+                self._watch_timer.deleteLater()
+            self._watch_timer = None
 
         # Stop XML-RPC server by closing its socket directly
         # This will cause handle_request() to raise an exception and exit
@@ -410,8 +497,10 @@ class FreecadMCPPlugin:
         # Now safe to clear the server reference
         self._xmlrpc_server = None
 
+        self._jobs.clear()
+
         if FREECAD_AVAILABLE:
-            FreeCAD.Console.PrintMessage("MCP Bridge stopped\n")
+            FreeCAD.Console.PrintMessage("MCP+ Bridge stopped\n")
 
     def _cleanup_for_exit(self) -> None:
         """Clean up server resources during Python exit (atexit handler).
@@ -448,10 +537,12 @@ class FreecadMCPPlugin:
         # Get shiboken delete function for explicit Qt object destruction
         shiboken_delete = _get_shiboken_delete()
 
-        # Stop queue processor timer - use shiboken.delete() for immediate destruction
-        if self._timer:
-            timer = self._timer
-            self._timer = None  # Clear reference first
+        # Stop queue processor timers - use shiboken.delete() for immediate destruction
+        for attr in ("_timer", "_watch_timer"):
+            timer = getattr(self, attr)
+            if not timer:
+                continue
+            setattr(self, attr, None)  # Clear reference first
             with contextlib.suppress(Exception):
                 timer.stop()
             with contextlib.suppress(Exception):
@@ -606,11 +697,13 @@ class FreecadMCPPlugin:
                     time_ago = f"{int(elapsed)}s ago"
                 else:
                     time_ago = f"{int(elapsed / 60)}m ago"
-                status = f"🔌 MCP Bridge active{ports} | {self._request_count} requests | last: {time_ago}"
+                status = f"🔌 MCP+ Bridge active{ports} | {self._request_count} requests | last: {time_ago}"
             else:
-                status = f"🔌 MCP Bridge active{ports} | {self._request_count} requests"
+                status = (
+                    f"🔌 MCP+ Bridge active{ports} | {self._request_count} requests"
+                )
         else:
-            status = f"🔌 MCP Bridge running{ports} | waiting for connections..."
+            status = f"🔌 MCP+ Bridge running{ports} | waiting for connections..."
 
         self._set_status_bar(status)
 
@@ -670,18 +763,19 @@ class FreecadMCPPlugin:
         if gui_available:
             # GUI mode: use Qt timer for thread-safe GUI operations
             try:
-                from PySide2 import QtCore
+                from PySide import QtCore
             except ImportError:
-                try:
-                    from PySide6 import QtCore
-                except ImportError:
-                    QtCore = None  # type: ignore[assignment]
+                QtCore = None  # type: ignore[assignment]
 
             if QtCore is not None:
                 timer = QtCore.QTimer()
                 timer.timeout.connect(self._process_queue)
                 timer.start(QUEUE_POLL_INTERVAL_MS)
                 self._timer = timer
+                watch_timer = QtCore.QTimer()
+                watch_timer.timeout.connect(self._watch_while_busy)
+                watch_timer.start(QUEUE_POLL_INTERVAL_MS * 2)
+                self._watch_timer = watch_timer
                 return
 
         # Headless mode: use a background thread for queue processing
@@ -711,11 +805,40 @@ class FreecadMCPPlugin:
         This method is called periodically by a Qt timer to ensure
         GUI operations happen on the main thread.
         """
-        while not self._request_queue.empty():
+        self._last_tick = time.monotonic()
+        self._note_modal_dialog()
+        self._run_requests(self._nested_queue)
+        if self._busy_job is not None:
+            # A run is waiting inside a nested event loop (a modal dialog); ordinary
+            # runs wait their turn instead of nesting inside it
+            return
+        self._run_requests(self._request_queue)
+
+    def _watch_while_busy(self) -> None:
+        """Keep the status fresh and let nested runs in while a run waits in a modal dialog.
+
+        Runs from the second timer, which keeps ticking inside the dialog's event loop.
+        """
+        self._last_tick = time.monotonic()
+        self._note_modal_dialog()
+        if self._busy_job is not None:
+            self._run_requests(self._nested_queue)
+
+    def _run_requests(self, requests: queue.Queue[ExecutionRequest]) -> None:
+        """Run the requests waiting in ``requests`` (main thread only)."""
+        while not requests.empty():
             try:
-                request = self._request_queue.get_nowait()
-                result = self._execute_code_sync(request.code)
+                request = requests.get_nowait()
+                outer_job = self._busy_job
+                self._busy_job = request.job
+                try:
+                    result = self._execute_code_sync(
+                        request.code, request.job, request.echo
+                    )
+                finally:
+                    self._busy_job = outer_job
                 request.result = result
+                request.job.finish(result)
                 request.completed.set()
                 # Track request for status bar
                 self._record_request()
@@ -725,22 +848,42 @@ class FreecadMCPPlugin:
                 if FREECAD_AVAILABLE:
                     FreeCAD.Console.PrintError(f"Queue processing error: {e}\n")
 
+    def _note_modal_dialog(self) -> None:
+        """Remember the title of the modal dialog that is up, if any (main thread only)."""
+        if not (FREECAD_AVAILABLE and FreeCAD.GuiUp):
+            return
+        with contextlib.suppress(Exception):
+            from PySide import QtWidgets
+
+            widget = QtWidgets.QApplication.activeModalWidget()
+            self._modal_title = (
+                (widget.windowTitle() or "(untitled)") if widget else None
+            )
+
     def _execute_via_queue(
         self,
         code: str,
         timeout_ms: int = 30000,
+        echo: bool = False,
+        nested: bool = False,
     ) -> dict[str, Any]:
         """Execute code via the queue system for thread safety.
+
+        A run that outlasts ``timeout_ms`` keeps going; the result then carries a
+        ``job_token`` for reading its output and result with ``get_output_page``.
 
         Args:
             code: Python code to execute.
             timeout_ms: Execution timeout in milliseconds.
+            echo: Also print the run's output to FreeCAD's Report view.
+            nested: Run even while another run waits inside a modal dialog, e.g. to
+                inspect or close that dialog. Ordinary runs wait their turn.
 
         Returns:
             Execution result dictionary.
         """
-        request = ExecutionRequest(code, timeout_ms)
-        self._request_queue.put(request)
+        request = ExecutionRequest(code, timeout_ms, echo=echo)
+        (self._nested_queue if nested else self._request_queue).put(request)
 
         # Wait for completion
         if request.completed.wait(timeout=timeout_ms / 1000):
@@ -749,26 +892,111 @@ class FreecadMCPPlugin:
                 "error_type": "InternalError",
                 "error_message": "No result returned",
             }
-        else:
-            return {
-                "success": False,
-                "error_type": "TimeoutError",
-                "error_message": f"Execution timed out after {timeout_ms}ms",
-                "execution_time_ms": timeout_ms,
-            }
+        self._jobs.keep(request.job)
+        return {
+            "success": False,
+            "error_type": "TimeoutError",
+            "error_message": (
+                f"Still running after {timeout_ms}ms. It keeps running; read its output "
+                "and final result with get_output_page(job_token, page_no=0, 1, ...)."
+            ),
+            "execution_time_ms": timeout_ms,
+            "job_token": request.job.token,
+            "still_running": True,
+        }
 
-    def _execute_code_sync(self, code: str) -> dict[str, Any]:
+    def get_output_page(
+        self,
+        job_token: str,
+        page_no: int = 0,
+        wait_ms: int = DEFAULT_PAGE_WAIT_MS,
+        page_chars: int = DEFAULT_PAGE_CHARS,
+    ) -> dict[str, Any]:
+        """Page ``page_no`` of a run that outlasted its timeout.
+
+        Args:
+            job_token: Token from the timed-out execute result.
+            page_no: 0-based page number; ask for the next one while ``has_more``.
+            wait_ms: How long to wait for new output before returning.
+            page_chars: Most characters a page carries.
+
+        Returns:
+            ``{job_token, page: [{stream, text}], page_no, has_more}``, plus the run's
+            result fields on the final page, or ``error``.
+        """
+        wait_ms = min(max(int(wait_ms), 0), MAX_PAGE_WAIT_MS)
+        page_chars = max(int(page_chars), 1024)
+        return self._jobs.page(job_token, int(page_no), wait_ms, page_chars)
+
+    def bridge_status(self) -> dict[str, Any]:
+        """What the bridge and FreeCAD's main thread are doing; never waits on the main thread.
+
+        Answers even while a run is busy or a modal dialog blocks FreeCAD.
+        """
+        now = time.monotonic()
+        busy = self._busy_job
+        return {
+            "protocol": BRIDGE_PROTOCOL,
+            "addon_version": _addon_version(),
+            "instance_id": self._instance_id,
+            "gui_up": bool(FREECAD_AVAILABLE and FreeCAD.GuiUp),
+            "queue_depth": self._request_queue.qsize() + self._nested_queue.qsize(),
+            "last_tick_age_s": None
+            if self._last_tick is None
+            else round(now - self._last_tick, 3),
+            "busy": None
+            if busy is None
+            else {
+                "job_token": busy.token,
+                "running_s": round(now - busy.started_at, 3)
+                if busy.started_at
+                else None,
+                "code_head": busy.code[:200],
+            },
+            "modal_dialog": self._modal_title,
+            "jobs_running": len(self._jobs.running()),
+            "auth_required": bool(self._auth_token),
+            "host": self._host,
+        }
+
+    def _request_allowed(self, origin: str | None, token: str | None) -> bool:
+        """Whether a request with these Origin and token values may be served."""
+        if (
+            origin
+            and origin != "null"
+            and urlparse(origin).hostname not in LOOPBACK_HOSTS
+        ):
+            # A web page from another site, reaching the bridge through a browser
+            return False
+        if self._auth_token:
+            return bool(token) and hmac.compare_digest(str(token), self._auth_token)
+        return True
+
+    def _execute_code_sync(
+        self,
+        code: str,
+        job: Job | None = None,
+        echo: bool = False,
+    ) -> dict[str, Any]:
         """Execute Python code synchronously (call on main thread only).
 
         Args:
             code: Python code to execute.
+            job: The job collecting the run's output.
+            echo: Also print the run's output to FreeCAD's Report view.
 
         Returns:
             Execution result dictionary.
         """
         start = time.perf_counter()
-        stdout_capture = io.StringIO()
-        stderr_capture = io.StringIO()
+        job = job or Job(code)
+        job.started_at = time.monotonic()
+        echo_out = echo_err = None
+        if echo and FREECAD_AVAILABLE:
+            echo_out = FreeCAD.Console.PrintMessage
+            echo_err = FreeCAD.Console.PrintError
+        stdout_capture = JobStream(job, "stdout", echo_out)
+        stderr_capture = JobStream(job, "stderr", echo_err)
 
         exec_globals: dict[str, Any] = {
             "__builtins__": __builtins__,
@@ -789,8 +1017,8 @@ class FreecadMCPPlugin:
             return {
                 "success": True,
                 "result": exec_globals.get("_result_"),
-                "stdout": stdout_capture.getvalue(),
-                "stderr": stderr_capture.getvalue(),
+                "stdout": job.text("stdout"),
+                "stderr": job.text("stderr"),
                 "execution_time_ms": elapsed,
             }
 
@@ -799,8 +1027,8 @@ class FreecadMCPPlugin:
             return {
                 "success": False,
                 "result": None,
-                "stdout": stdout_capture.getvalue(),
-                "stderr": stderr_capture.getvalue(),
+                "stdout": job.text("stdout"),
+                "stderr": job.text("stderr"),
                 "execution_time_ms": elapsed,
                 "error_type": type(e).__name__,
                 "error_message": str(e),
@@ -825,12 +1053,12 @@ class FreecadMCPPlugin:
             if e.errno == errno.EADDRINUSE:
                 if FREECAD_AVAILABLE:
                     FreeCAD.Console.PrintWarning(
-                        f"MCP Bridge: JSON-RPC port {self._port} already in use. "
+                        f"MCP+ Bridge: JSON-RPC port {self._port} already in use. "
                         f"Another instance may be running.\n"
                     )
             elif FREECAD_AVAILABLE:
                 FreeCAD.Console.PrintError(
-                    f"MCP Bridge: Failed to start JSON-RPC server: {e}\n"
+                    f"MCP+ Bridge: Failed to start JSON-RPC server: {e}\n"
                 )
         finally:
             self._socket_loop.close()
@@ -886,7 +1114,7 @@ class FreecadMCPPlugin:
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
 
-    async def _process_jsonrpc_request(
+    async def _process_jsonrpc_request(  # noqa: PLR0911
         self,
         request: dict[str, Any],
     ) -> dict[str, Any]:
@@ -901,6 +1129,29 @@ class FreecadMCPPlugin:
         request_id = request.get("id")
         method = request.get("method")
         params = request.get("params", {})
+
+        if not self._request_allowed(None, request.get("auth")):
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32001, "message": "Unauthorized"},
+            }
+
+        if method == "status":
+            return {"jsonrpc": "2.0", "id": request_id, "result": self.bridge_status()}
+
+        if method == "get_output_page":
+            loop = asyncio.get_event_loop()
+            page = await loop.run_in_executor(
+                None,
+                lambda: self.get_output_page(
+                    params.get("job_token", ""),
+                    params.get("page_no", 0),
+                    params.get("wait_ms", DEFAULT_PAGE_WAIT_MS),
+                    params.get("page_chars", DEFAULT_PAGE_CHARS),
+                ),
+            )
+            return {"jsonrpc": "2.0", "id": request_id, "result": page}
 
         # Handle ping specially (no queue needed)
         if method == "ping":
@@ -926,12 +1177,14 @@ class FreecadMCPPlugin:
         if method == "execute":
             code = params.get("code", "")
             timeout_ms = params.get("timeout_ms", 30000)
+            echo = bool(params.get("echo", False))
+            nested = bool(params.get("nested", False))
 
             # Execute via queue for thread safety
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
-                lambda: self._execute_via_queue(code, timeout_ms),
+                lambda: self._execute_via_queue(code, timeout_ms, echo, nested),
             )
 
             return {
@@ -957,11 +1210,23 @@ class FreecadMCPPlugin:
 
     def _run_xmlrpc_server(self) -> None:
         """Run the XML-RPC server."""
-
         # Custom request handler that silently handles GET requests
         # instead of logging "Unsupported method ('GET')" errors
+        plugin = self
+
         class QuietXMLRPCRequestHandler(xmlrpc.server.SimpleXMLRPCRequestHandler):
             """XML-RPC handler that responds gracefully to GET requests."""
+
+            def do_POST(self) -> None:
+                """Refuse requests from foreign web pages, or without the auth token."""
+                token = self.headers.get("X-MCP-Token")
+                authorization = self.headers.get("Authorization", "")
+                if not token and authorization.startswith("Bearer "):
+                    token = authorization[len("Bearer ") :]
+                if not plugin._request_allowed(self.headers.get("Origin"), token):
+                    self.send_error(403)
+                    return
+                super().do_POST()
 
             def do_GET(self) -> None:
                 """Handle GET requests with a friendly plain-text response.
@@ -984,9 +1249,9 @@ class FreecadMCPPlugin:
                     A simple GET request to check if the bridge is running::
 
                         curl http://localhost:9875/
-                        # Returns: FreeCAD MCP Bridge - XML-RPC endpoint (POST only)
+                        # Returns: FreeCAD MCP+ Bridge - XML-RPC endpoint (POST only)
                 """
-                response = b"FreeCAD MCP Bridge - XML-RPC endpoint (POST only)"
+                response = b"FreeCAD MCP+ Bridge - XML-RPC endpoint (POST only)"
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
                 self.send_header("Content-Length", str(len(response)))
@@ -1019,8 +1284,19 @@ class FreecadMCPPlugin:
                 """
                 pass
 
+        class ThreadedXMLRPCServer(
+            socketserver.ThreadingMixIn, xmlrpc.server.SimpleXMLRPCServer
+        ):
+            """XML-RPC server that serves each request on its own thread.
+
+            Status and paging calls then get answered while an execute call is still
+            waiting for its run.
+            """
+
+            daemon_threads = True
+
         try:
-            self._xmlrpc_server = xmlrpc.server.SimpleXMLRPCServer(
+            self._xmlrpc_server = ThreadedXMLRPCServer(
                 (self._host, self._xmlrpc_port),
                 requestHandler=QuietXMLRPCRequestHandler,
                 allow_none=True,
@@ -1030,12 +1306,12 @@ class FreecadMCPPlugin:
             if e.errno == errno.EADDRINUSE:
                 if FREECAD_AVAILABLE:
                     FreeCAD.Console.PrintWarning(
-                        f"MCP Bridge: XML-RPC port {self._xmlrpc_port} already in use. "
+                        f"MCP+ Bridge: XML-RPC port {self._xmlrpc_port} already in use. "
                         f"Another instance may be running.\n"
                     )
             elif FREECAD_AVAILABLE:
                 FreeCAD.Console.PrintError(
-                    f"MCP Bridge: Failed to start XML-RPC server: {e}\n"
+                    f"MCP+ Bridge: Failed to start XML-RPC server: {e}\n"
                 )
             return
 
@@ -1050,6 +1326,8 @@ class FreecadMCPPlugin:
             self._xmlrpc_get_instance_id, "get_instance_id"
         )  # type: ignore[arg-type]
         self._xmlrpc_server.register_function(self._xmlrpc_get_view, "get_view")  # type: ignore[arg-type]
+        self._xmlrpc_server.register_function(self.get_output_page, "get_output_page")  # type: ignore[arg-type]
+        self._xmlrpc_server.register_function(self.bridge_status, "status")  # type: ignore[arg-type]
         self._xmlrpc_server.register_introspection_functions()
 
         while self._running:
@@ -1075,16 +1353,26 @@ class FreecadMCPPlugin:
         """
         return {"instance_id": self._instance_id}
 
-    def _xmlrpc_execute(self, code: str) -> dict[str, Any]:
+    def _xmlrpc_execute(
+        self,
+        code: str,
+        timeout_ms: int = 30000,
+        echo: bool = False,
+        nested: bool = False,
+    ) -> dict[str, Any]:
         """XML-RPC execute handler (neka-nat compatible).
 
         Args:
             code: Python code to execute.
+            timeout_ms: Execution timeout in milliseconds, capped at 30 minutes.
+            echo: Also print the run's output to FreeCAD's Report view.
+            nested: Run even while another run waits inside a modal dialog.
 
         Returns:
             Execution result dictionary.
         """
-        return self._execute_via_queue(code, 30000)
+        timeout_ms = min(max(int(timeout_ms), 1), MAX_EXECUTE_TIMEOUT_MS)
+        return self._execute_via_queue(code, timeout_ms, bool(echo), bool(nested))
 
     # Valid view types for screenshot capture
     _VALID_VIEW_TYPES = frozenset(

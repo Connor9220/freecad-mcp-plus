@@ -53,6 +53,18 @@ class TestServerConfig:
             with pytest.raises(Exception):  # Pydantic validation error
                 ServerConfig()
 
+    def test_dotenv_with_unrelated_variables(self, tmp_path, monkeypatch):
+        """A .env holding other tools' variables should not break startup."""
+        (tmp_path / ".env").write_text(
+            "OPENAI_API_KEY=abc\nFREECAD_MODE=socket\nFREECAD_NOT_A_SETTING=1\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            config = ServerConfig()
+
+        assert config.mode == FreecadMode.SOCKET
+
     def test_get_config_returns_instance(self):
         """get_config should return a ServerConfig instance."""
         config = get_config()

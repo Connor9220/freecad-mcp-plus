@@ -140,3 +140,47 @@ class TestSocketBridgeVersionInfo:
 
         assert version["version"] == "unknown"
         assert version["gui_available"] is False
+
+
+class TestSocketBridgeScreenshot:
+    """Tests for the screenshot code sent over the socket bridge."""
+
+    @pytest.mark.asyncio
+    async def test_get_screenshot_handles_view_class_dict(self, tmp_path):
+        """get_screenshot must not read view.__class__, which FreeCAD returns as a dict."""
+        from types import SimpleNamespace
+
+        from freecad_mcp.bridge.base import ExecutionResult
+
+        bridge = SocketBridge()
+        bridge.execute_python = mock.AsyncMock(
+            return_value=ExecutionResult(
+                success=False, result=None, stdout="", stderr="", execution_time_ms=1.0
+            )
+        )
+        await bridge.get_screenshot(width=10, height=10)
+        code = bridge.execute_python.call_args[0][0]
+        assert "view.__class__" not in code
+
+        class View3DInventorPy:
+            # Mimic View3DInventorPy, whose __class__ lookup returns a dict
+            __class__ = property(lambda _self: {"viewIsometric": ""})
+
+            def viewIsometric(self):
+                pass
+
+            def saveImage(self, path, width, height, background):
+                with open(path, "wb") as f:
+                    f.write(b"png")
+
+        doc = SimpleNamespace()
+        freecad = SimpleNamespace(
+            GuiUp=True, ActiveDocument=doc, getDocument=lambda _n: doc
+        )
+        freecad_gui = SimpleNamespace(
+            ActiveDocument=SimpleNamespace(ActiveView=View3DInventorPy())
+        )
+        namespace = {"FreeCAD": freecad, "FreeCADGui": freecad_gui}
+        exec(code, namespace)  # noqa: S102 - runs the generated FreeCAD code on fakes
+        assert namespace["_result_"]["success"] is True
+        assert namespace["_result_"]["data"] == "cG5n"

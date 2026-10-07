@@ -483,6 +483,72 @@ class TestFreecadResources:
         assert "prompts" in data
 
     @pytest.mark.asyncio
+    async def test_resource_capabilities_screenshot_params(
+        self, register_resources: dict[str, Callable[..., Any]], mock_bridge: AsyncMock
+    ) -> None:
+        """get_screenshot key_params should match the real tool signature."""
+        import inspect
+
+        from freecad_mcp.tools.view import register_view_tools
+
+        tools: dict[str, Callable[..., Any]] = {}
+        mcp = MagicMock()
+
+        def tool_decorator() -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            def wrapper(func: Callable[..., Any]) -> Callable[..., Any]:
+                tools[func.__name__] = func
+                return func
+
+            return wrapper
+
+        mcp.tool = tool_decorator
+        register_view_tools(mcp, AsyncMock())
+
+        data = json.loads(await register_resources["freecad://capabilities"]())
+        entry = next(
+            t for t in data["tools"]["view"]["tools"] if t["name"] == "get_screenshot"
+        )
+        params = set(inspect.signature(tools["get_screenshot"]).parameters)
+        assert set(entry["key_params"]) <= params
+
+    @pytest.mark.asyncio
+    async def test_resource_capabilities_key_params_exist(
+        self, register_resources: dict[str, Callable[..., Any]], mock_bridge: AsyncMock
+    ) -> None:
+        """Every listed tool's key_params should be real parameters of that tool."""
+        import inspect
+
+        from freecad_mcp.tools import register_all_tools
+
+        tools: dict[str, Callable[..., Any]] = {}
+        mcp = MagicMock()
+
+        def tool_decorator(
+            *_args: Any, **_kwargs: Any
+        ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            def wrapper(func: Callable[..., Any]) -> Callable[..., Any]:
+                tools[func.__name__] = func
+                return func
+
+            return wrapper
+
+        mcp.tool = tool_decorator
+        register_all_tools(mcp, AsyncMock())
+
+        data = json.loads(await register_resources["freecad://capabilities"]())
+        wrong = {}
+        for category in data["tools"].values():
+            for entry in category["tools"]:
+                func = tools.get(entry["name"])
+                if func is None:
+                    continue
+                params = set(inspect.signature(func).parameters)
+                bad = [p for p in entry["key_params"] if p not in params]
+                if bad:
+                    wrong[entry["name"]] = bad
+        assert not wrong, f"key_params not accepted by the tool: {wrong}"
+
+    @pytest.mark.asyncio
     async def test_resource_capabilities_includes_all_resources(
         self, register_resources: dict[str, Callable[..., Any]], mock_bridge: AsyncMock
     ) -> None:

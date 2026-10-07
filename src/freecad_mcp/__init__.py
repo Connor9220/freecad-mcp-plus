@@ -1,7 +1,8 @@
-"""FreeCAD Robust MCP Server - AI assistant integration for FreeCAD.
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 Sean P. Kane <spkane@gmail.com>
+# SPDX-FileNotice: Part of MCP+.
 
-SPDX-License-Identifier: MIT
-Copyright (c) 2025 Sean P. Kane (GitHub: spkane)
+"""FreeCAD Robust MCP Server - AI assistant integration for FreeCAD.
 
 This package provides an MCP (Model Context Protocol) server that enables
 integration between AI assistants (Claude, GPT, etc.) and FreeCAD, allowing
