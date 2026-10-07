@@ -21,9 +21,8 @@ and adds:
 - **`bridge_status`**: what FreeCAD is busy with, or which modal dialog is blocking it, answered even
   while every other call would wait (after [neka-nat/freecad-mcp](https://github.com/neka-nat/freecad-mcp)).
 - **`execute_python_file`**: run a script with `__file__` set and `__name__ == "__main__"`.
-- **Safer bridge**: requests from foreign web pages are refused, and an optional auth token
-  (preferences `AuthToken` / `BindHost`, or `FREECAD_MCP_AUTH_TOKEN` / `FREECAD_MCP_BIND_HOST`) is
-  required before the bridge listens beyond localhost.
+- **Safer bridge**: every request must carry a per-user token, and requests from foreign web pages
+  are refused (see [Security and your data](#security-and-your-data)).
 - **Fixes**: Addon Manager crash on install, Qt imports through FreeCAD's `PySide` wrapper,
   PartDesign/Sketcher tools on FreeCAD 1.x, screenshots, `.env` handling.
 
@@ -34,6 +33,38 @@ add `https://github.com/Connor9220/freecad-mcp-plus` with branch `main`, then in
 
 The rest of this README is spkane's original documentation; it still applies, with "Robust MCP
 Bridge" now shown as "MCP+".
+
+## Security and your data
+
+**What MCP+ allows.** MCP+ lets an AI assistant run any Python code in your FreeCAD session, with
+your user's permissions, the same as a macro you run yourself. There is no sandbox: the code can
+read and write your files, start programs and reach the network. Your MCP client is the guardrail:
+use one you trust, and have it ask for your approval before it runs tool calls.
+
+**Who can reach the bridge.** The bridge only runs while you start it (auto-start is off unless you
+turn it on in **Edit → Preferences → MCP+**). It listens on `localhost` (ports 9875 and 9876 by
+default), so other computers can't reach it. Every request must also carry a token:
+
+- On its first start the bridge creates a random token in a file only your user can read:
+  `~/.config/mcp-plus/token` on Linux, `~/Library/Application Support/mcp-plus/token` on macOS,
+  `%APPDATA%\mcp-plus\token` on Windows. The MCP server reads the same file, so nothing needs
+  configuring, while other users' programs on the same computer can't get in.
+- **Edit → Preferences → MCP+ → Security** shows the token file, copies the token, or replaces it
+  (takes effect at once). Turning the token off is possible for localhost only, and not recommended.
+- Requests sent by web pages in your browser (an `Origin` other than localhost) are refused.
+- To use FreeCAD from another computer, prefer an ssh tunnel to its port. If you do set
+  **Listen on** to another address, the MCP server there needs the token in `FREECAD_AUTH_TOKEN`;
+  the bridge never listens beyond localhost without one.
+
+**Where your data goes.** The add-on and the MCP server collect nothing and send nothing to anyone;
+there is no telemetry. But whatever the assistant asks FreeCAD for becomes part of its conversation:
+object names and properties, file names and paths, geometry, the output of code it runs, and
+screenshots of your 3D view. Your MCP client sends that to your AI provider, under that provider's
+terms. Don't use MCP+ on designs you aren't allowed to share with your AI provider. Code the assistant
+runs can also reach the network, as any macro can.
+
+**Reporting a security problem.** Please use GitHub's private vulnerability reporting (the
+repository's **Security** tab) rather than a public issue.
 
 ## Table of Contents
 
