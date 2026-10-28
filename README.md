@@ -8,7 +8,7 @@ MCP+ lets AI assistants (Claude Code and other [MCP](https://modelcontextprotoco
 your live [FreeCAD](https://www.freecad.org/) session: build and inspect models, run Python, drive the
 GUI the way a user would, and review CAM jobs. It works with FreeCAD 1.1 and newer development builds.
 
-MCP+ is built on [spkane's Robust MCP Server](https://github.com/spkane/freecad-addon-robust-mcp-server)
+MCP+ is built on [spkane's MCP+ server](https://github.com/spkane/freecad-addon-robust-mcp-server)
 and adds:
 
 - **CAM tools**: path statistics, A/B comparisons between two code trees, geometry finders, test
@@ -26,13 +26,15 @@ and adds:
 - **Fixes**: Addon Manager crash on install, Qt imports through FreeCAD's `PySide` wrapper,
   PartDesign/Sketcher tools on FreeCAD 1.x, screenshots, `.env` handling.
 
-Install it with the Addon Manager: **Edit → Preferences → Addon Manager → Custom repositories → +**,
-add `https://github.com/Connor9220/freecad-mcp-plus` with branch `main`, then install **MCP+** from
-**Tools → Addon Manager** and restart FreeCAD. The MCP server half installs with
-`pip install git+https://github.com/Connor9220/freecad-mcp-plus` (command `freecad-mcp`).
+Install it with FreeCAD's Addon Manager or with git (see [Installation](#installation)). The MCP
+server comes with the add-on; your AI client runs it from the add-on folder with
+[uv](https://docs.astral.sh/uv/).
 
-The rest of this README is spkane's original documentation; it still applies, with "Robust MCP
-Bridge" now shown as "MCP+".
+**Platforms.** MCP+ runs on Linux, Windows and macOS. The exceptions are the tools that move a real
+mouse and keyboard: `cam_record_demo` and GuiDriver's `xmouse` / `xkeys_external` helpers use X11
+(XTest) and work only on Linux with X11. The other GuiDriver tools work everywhere.
+
+The rest of this README is adapted from the original server's documentation.
 
 ## Security and your data
 
@@ -70,35 +72,28 @@ repository's **Security** tab) rather than a public issue.
 
 <!--TOC-->
 
-- [FreeCAD Robust MCP Server](#freecad-robust-mcp-server)
+- [MCP+](#mcp)
+  - [Security and your data](#security-and-your-data)
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
   - [Installation Requirements / Dependencies](#installation-requirements--dependencies)
   - [For Users](#for-users)
     - [Quick Links](#quick-links)
-  - [Robust MCP Server](#robust-mcp-server)
+  - [MCP+ Server](#mcp-server)
     - [Installation](#installation)
-      - [Using pip (recommended)](#using-pip-recommended)
-      - [Using mise and just (from source)](#using-mise-and-just-from-source)
-      - [Using Docker](#using-docker)
+      - [Addon Manager (recommended)](#addon-manager-recommended)
+      - [Git](#git)
+      - [Finding the add-on folder](#finding-the-add-on-folder)
     - [Configuration](#configuration)
+      - [MCP Client Configuration](#mcp-client-configuration)
       - [Environment Variables](#environment-variables)
       - [Connection Modes](#connection-modes)
-      - [MCP Client Configuration](#mcp-client-configuration)
     - [Usage](#usage)
       - [Starting the MCP Bridge in FreeCAD](#starting-the-mcp-bridge-in-freecad)
-        - [Option A: Using the Workbench (Recommended)](#option-a-using-the-workbench-recommended)
-        - [Option B: Using just commands (from source)](#option-b-using-just-commands-from-source)
-      - [Uninstalling the MCP Bridge](#uninstalling-the-mcp-bridge)
-        - [Checking for Legacy Components](#checking-for-legacy-components)
-        - [Manual Cleanup (if needed)](#manual-cleanup-if-needed)
-      - [Running Modes](#running-modes)
-        - [XML-RPC Mode (Recommended)](#xml-rpc-mode-recommended)
-        - [Socket Mode (JSON-RPC)](#socket-mode-json-rpc)
-        - [Headless Mode](#headless-mode)
-        - [Embedded Mode (Linux Only)](#embedded-mode-linux-only)
+      - [Updating](#updating)
+      - [Uninstalling](#uninstalling)
     - [Available Tools](#available-tools)
-      - [Execution & Debugging (5 tools)](#execution--debugging-5-tools)
+      - [Execution & Debugging (8 tools)](#execution--debugging-8-tools)
       - [Document Management (7 tools)](#document-management-7-tools)
       - [Object Creation - Primitives (8 tools)](#object-creation---primitives-8-tools)
       - [Object Management (12 tools)](#object-management-12-tools)
@@ -109,15 +104,13 @@ repository's **Security** tab) rather than a public issue.
       - [Export/Import (7 tools)](#exportimport-7-tools)
       - [Macro Management (6 tools)](#macro-management-6-tools)
       - [Parts Library (2 tools)](#parts-library-2-tools)
+      - [CAM review and testing (11 tools)](#cam-review-and-testing-11-tools)
+      - [GUI health (2 tools)](#gui-health-2-tools)
+      - [GuiDriver - drive the GUI like a user (6 tools)](#guidriver---drive-the-gui-like-a-user-6-tools)
   - [For Developers](#for-developers)
-  - [Robust MCP Server Development](#robust-mcp-server-development)
+  - [MCP+ Server Development](#mcp-server-development)
     - [Prerequisites](#prerequisites)
     - [Initial Setup](#initial-setup)
-    - [MCP Client Configuration (Development)](#mcp-client-configuration-development)
-    - [Development Workflow](#development-workflow)
-    - [Running FreeCAD with the MCP Bridge](#running-freecad-with-the-mcp-bridge)
-      - [GUI Mode (recommended for development)](#gui-mode-recommended-for-development)
-      - [Headless Mode (for automation/CI)](#headless-mode-for-automationci)
     - [Running Tests](#running-tests)
     - [Code Quality](#code-quality)
   - [Architecture](#architecture)
@@ -126,11 +119,6 @@ repository's **Security** tab) rather than a public issue.
   - [License](#license)
 
 <!--TOC-->
-
-> The macros that were originally in this repo under the `/macros` directory have been permanently moved to two new GitHub repos:
->
-> - [spkane/freecad-macro-cut-for-magnets](https://github.com/spkane/freecad-macro-cut-for-magnets)
-> - [spkane/freecad-macro-3d-print-multi-export](https://github.com/spkane/freecad-macro-3d-print-multi-export)
 
 **FreeCAD Forum:** [addon discussion post](https://forum.freecad.org/viewtopic.php?p=866012)
 
@@ -144,72 +132,79 @@ repository's **Security** tab) rather than a public issue.
 ## Installation Requirements / Dependencies
 
 - [FreeCAD](https://www.freecad.org/) 1.1 or newer
-- Python 3.11 (required for FreeCAD ABI compatibility)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), which runs the MCP server and sets
+  up its Python environment on first start
 
 ---
 
 ## For Users
 
-This section covers installation and usage for end users who want to use the Robust MCP Server with AI assistants.
+This section covers installation and usage for end users who want to use the MCP+ server with AI assistants.
 
 ### Quick Links
 
-| Resource                                                                              | Description                                   |
-| ------------------------------------------------------------------------------------- | --------------------------------------------- |
-| [**Documentation**](https://spkane.github.io/freecad-addon-robust-mcp-server/)        | Full documentation, guides, and API reference |
-| [Docker Hub](https://hub.docker.com/r/spkane/freecad-robust-mcp)                      | Pre-built Docker images for easy deployment   |
-| [PyPI](https://pypi.org/project/freecad-robust-mcp/)                                  | Python package for pip installation           |
-| [GitHub Releases](https://github.com/spkane/freecad-addon-robust-mcp-server/releases) | Release archives and changelogs               |
+| Resource                                                                       | Description                                       |
+| ------------------------------------------------------------------------------ | ------------------------------------------------- |
+| [**Documentation**](https://spkane.github.io/freecad-addon-robust-mcp-server/) | Original server's documentation and API reference |
+| [GitHub Releases](https://github.com/Connor9220/freecad-mcp-plus/releases)     | MCP+ releases and changelogs                      |
+| [Issues](https://github.com/Connor9220/freecad-mcp-plus/issues)                | Bug reports and feature requests                  |
 
-## Robust MCP Server
-
-> **Note**: The Linux container and PyPI package are both named `freecad-robust-mcp` which differs slightly from this git repository name.
+## MCP+ Server
 
 ### Installation
 
-#### Using pip (recommended)
+MCP+ is one download: the FreeCAD add-on and the MCP server live in the same folder,
+`freecad-mcp-plus` inside FreeCAD's `Mod` folder. Install it one of two ways.
+
+#### Addon Manager (recommended)
+
+1. **Edit → Preferences → Addon Manager → Custom repositories → +**, add
+   `https://github.com/Connor9220/freecad-mcp-plus` with branch `main`.
+1. **Tools → Addon Manager**, search for "MCP+", install it and restart FreeCAD.
+
+#### Git
+
+Clone the repository into FreeCAD's `Mod` folder and restart FreeCAD:
 
 ```bash
-pip install freecad-robust-mcp
+git clone https://github.com/Connor9220/freecad-mcp-plus.git <Mod folder>/freecad-mcp-plus
 ```
 
-#### Using mise and just (from source)
+#### Finding the add-on folder
 
-```bash
-git clone https://github.com/spkane/freecad-addon-robust-mcp-server.git
-cd freecad-addon-robust-mcp-server
+Your MCP client needs the add-on folder's path. Run this in FreeCAD's Python console:
 
-# Install mise via the Official mise installer script (if not already installed)
-curl https://mise.run | sh
-
-mise trust
-mise install
-just setup
+```python
+import os; print(os.path.join(App.getUserAppDataDir(), "Mod", "freecad-mcp-plus"))
 ```
 
-#### Using Docker
-
-Run the Robust MCP Server in a container. This is useful for isolated environments or when you don't want to install Python dependencies on your host.
-
-```bash
-# Pull from Docker Hub (when published)
-docker pull spkane/freecad-robust-mcp
-
-# Or build locally
-git clone https://github.com/spkane/freecad-addon-robust-mcp-server.git
-cd freecad-addon-robust-mcp-server
-docker build -t freecad-robust-mcp .
-
-# Or use just commands (if you have mise/just installed)
-just docker::build        # Build for local architecture
-just docker::build-multi  # Build multi-arch (amd64 + arm64)
-```
-
-**Note:** The containerized Robust MCP Server only supports `xmlrpc` and `socket` modes since FreeCAD runs on your host machine (not in the container). The container connects to FreeCAD via `host.docker.internal`.
+On Linux with FreeCAD 1.1 this is usually `~/.local/share/FreeCAD/v1-1/Mod/freecad-mcp-plus`.
 
 ### Configuration
 
+#### MCP Client Configuration
+
+Add something like the following to your MCP client settings, with `--project` pointing at the
+add-on folder. For Claude Code, this is `~/.claude.json` (or `claude mcp add`) or a project
+`.mcp.json` file:
+
+```json
+{
+  "mcpServers": {
+    "freecad": {
+      "command": "uv",
+      "args": ["run", "--project", "/path/to/FreeCAD/Mod/freecad-mcp-plus", "freecad-mcp"],
+      "env": {
+        "FREECAD_MODE": "xmlrpc"
+      }
+    }
+  }
+}
+```
+
 #### Environment Variables
+
+Set these in the `env` block above.
 
 | Variable              | Description                                          | Default     |
 | --------------------- | ---------------------------------------------------- | ----------- |
@@ -230,85 +225,15 @@ just docker::build-multi  # Build multi-arch (amd64 + arm64)
 
 **Note:** Embedded mode crashes on macOS because FreeCAD's `FreeCAD.so` links to `@rpath/libpython3.11.dylib`, which conflicts with external Python interpreters. Use `xmlrpc` or `socket` mode on macOS and Windows.
 
-#### MCP Client Configuration
-
-Add something like the following to your MCP client settings. For Claude Code, this is `~/.claude/claude_desktop_config.json` or a project `.mcp.json` file:
-
-```json
-{
-  "mcpServers": {
-    "freecad": {
-      "command": "freecad-mcp",
-      "env": {
-        "FREECAD_MODE": "xmlrpc"
-      }
-    }
-  }
-}
-```
-
-If installed from source with mise/uv:
-
-```json
-{
-  "mcpServers": {
-    "freecad": {
-      "command": "/path/to/mise/shims/uv",
-      "args": ["run", "--project", "/path/to/freecad-addon-robust-mcp-server", "freecad-mcp"],
-      "env": {
-        "FREECAD_MODE": "xmlrpc"
-      }
-    }
-  }
-}
-```
-
-If using Docker:
-
-```json
-{
-  "mcpServers": {
-    "freecad": {
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "--add-host=host.docker.internal:host-gateway",
-        "-e", "FREECAD_MODE=xmlrpc",
-        "-e", "FREECAD_SOCKET_HOST=host.docker.internal",
-        "spkane/freecad-robust-mcp"
-      ]
-    }
-  }
-}
-```
-
-**Docker configuration notes:**
-
-- `--rm` removes the container after it exits
-- `-i` keeps stdin open for MCP communication
-- `--add-host=host.docker.internal:host-gateway` allows the container to connect to FreeCAD on your host (Linux only; macOS/Windows have this built-in)
-- `FREECAD_SOCKET_HOST=host.docker.internal` tells the Robust MCP Server to connect to FreeCAD on your host machine
-
 ### Usage
 
 #### Starting the MCP Bridge in FreeCAD
 
 Before your AI assistant can connect, you need to start the MCP bridge inside FreeCAD:
 
-##### Option A: Using the Workbench (Recommended)
-
-1. Install the Robust MCP Bridge workbench via FreeCAD's Addon Manager:
-
-   - **Edit -> Preferences -> Addon Manager**
-   - Search for "Robust MCP Bridge"
-   - Install and restart FreeCAD
-
-1. Start the bridge:
-
-   - Switch to the Robust MCP Bridge workbench
-   - Click the **Start MCP Bridge** button in the toolbar
-   - Or use the menu: **MCP Bridge -> Start Bridge**
-
+1. Switch to the MCP+ workbench.
+1. Click the **Start MCP Bridge** button in the toolbar, or use the menu **MCP Bridge -> Start Bridge**.
+   To start it with FreeCAD every time, turn on auto-start in **Edit → Preferences → MCP+**.
 1. You should see in the FreeCAD console:
 
    ```text
@@ -317,90 +242,25 @@ Before your AI assistant can connect, you need to start the MCP bridge inside Fr
      - Socket: localhost:9876
    ```
 
-##### Option B: Using just commands (from source)
+After starting the bridge, start/restart your MCP client (Claude Code, etc.) - it will connect automatically.
 
-```bash
-# Start FreeCAD with MCP bridge auto-started
-just freecad::run-gui
+#### Updating
 
-# Or for headless/automation mode:
-just freecad::run-headless
-```
+- Addon Manager: **Tools → Addon Manager → Check for updates**, then update MCP+.
+- Git: run `git pull` in the add-on folder.
 
-After starting the bridge, start/restart your MCP client (Claude Code, etc.) - it will connect automatically
+Restart FreeCAD and your MCP client afterwards.
 
-#### Uninstalling the MCP Bridge
+#### Uninstalling
 
-To uninstall the Robust MCP Bridge workbench:
+- Addon Manager: **Tools → Addon Manager**, select MCP+, click **Uninstall**, restart FreeCAD.
+- Git: delete the `freecad-mcp-plus` folder from FreeCAD's `Mod` folder and restart FreeCAD.
 
-1. Open FreeCAD
-1. Go to **Edit -> Preferences -> Addon Manager**
-1. Find "Robust MCP Bridge" in the list
-1. Click **Uninstall**
-1. Restart FreeCAD
-
-##### Checking for Legacy Components
-
-If you previously used older versions of this project, you may have legacy components installed. Run this command to check what's installed and get cleanup instructions:
-
-```bash
-just install::status
-```
-
-##### Manual Cleanup (if needed)
-
-Remove any legacy files that may conflict with the workbench:
-
-```bash
-# macOS - remove legacy plugin and macro
-rm -rf ~/Library/Application\ Support/FreeCAD/Mod/MCPBridge/
-rm -f ~/Library/Application\ Support/FreeCAD/Macro/StartMCPBridge.FCMacro
-
-# Linux - remove legacy plugin and macro
-rm -rf ~/.local/share/FreeCAD/Mod/MCPBridge/
-rm -f ~/.local/share/FreeCAD/Macro/StartMCPBridge.FCMacro
-```
-
-#### Running Modes
-
-##### XML-RPC Mode (Recommended)
-
-Connects to a running FreeCAD instance via XML-RPC. Works on all platforms.
-
-```bash
-FREECAD_MODE=xmlrpc freecad-mcp
-```
-
-##### Socket Mode (JSON-RPC)
-
-Connects via JSON-RPC socket. Works on all platforms.
-
-```bash
-FREECAD_MODE=socket freecad-mcp
-```
-
-##### Headless Mode
-
-Run FreeCAD in console mode without GUI. Useful for automation.
-
-```bash
-# If installed from source:
-just freecad::run-headless
-```
-
-**Note:** Screenshot and view features are not available in headless mode.
-
-##### Embedded Mode (Linux Only)
-
-Runs FreeCAD in-process. **Only works on Linux** - crashes on macOS/Windows.
-
-```bash
-FREECAD_MODE=embedded freecad-mcp
-```
+Remove the `freecad` entry from your MCP client settings as well.
 
 ### Available Tools
 
-The Robust MCP Server provides **150+ tools** organized into categories. Tools marked with **GUI** require FreeCAD to be running in GUI mode; they will return an error in headless mode.
+The MCP+ server provides **150+ tools** organized into categories. Tools marked with **GUI** require FreeCAD to be running in GUI mode; they will return an error in headless mode.
 
 #### Execution & Debugging (8 tools)
 
@@ -413,7 +273,7 @@ The Robust MCP Server provides **150+ tools** organized into categories. Tools m
 | `get_freecad_version`        | Get FreeCAD version, build date, and Python version           | All  |
 | `get_connection_status`      | Check MCP bridge connection status and latency                | All  |
 | `get_console_output`         | Get recent FreeCAD console output (up to N lines)             | All  |
-| `get_mcp_server_environment` | Get Robust MCP Server environment (OS, hostname, instance_id) | All  |
+| `get_mcp_server_environment` | Get MCP+ server environment (OS, hostname, instance_id)       | All  |
 
 #### Document Management (7 tools)
 
@@ -546,24 +406,24 @@ The Robust MCP Server provides **150+ tools** organized into categories. Tools m
 Tools for reviewing and testing CAM (Path) changes. "Local" tools run on the machine of the MCP
 server (headless FreeCADCmd, file comparisons) and don't need the bridge.
 
-| Tool                | Description                                                                 | Mode  |
-| ------------------- | --------------------------------------------------------------------------- | ----- |
-| `cam_path_stats`    | Counts, cut/rapid length, Z levels, link heights, upward feeds of an op     | All   |
-| `cam_ab`            | Run a probe against two git refs of the CAM code and compare the results    | Local |
-| `cam_find_geometry` | Find faces and edges by normal, height or radius                            | All   |
-| `cam_fixture`       | Build a test Job with stock, tool controller and operation                  | All   |
-| `cam_post`          | Post a job; upload, username and remote dialogs are cancelled               | All   |
-| `cam_gcode_diff`    | Compare two G-code outputs                                                  | Local |
-| `cam_gouge_check`   | Sweep the tool along link moves and report gouges                           | All   |
-| `cam_coverage`      | Grid check of the material an operation leaves uncut                        | All   |
-| `cam_tests`         | Run CAM unit tests, optionally against a baseline tree                      | Local |
-| `fc_eval`           | Run a script in headless FreeCADCmd and return its real exit code           | Local |
-| `cam_record_demo`   | Record a captioned GUI demo on an off-screen display                        | GUI   |
+| Tool                | Description                                                              | Mode  |
+| ------------------- | ------------------------------------------------------------------------ | ----- |
+| `cam_path_stats`    | Counts, cut/rapid length, Z levels, link heights, upward feeds of an op  | All   |
+| `cam_ab`            | Run a probe against two git refs of the CAM code and compare the results | Local |
+| `cam_find_geometry` | Find faces and edges by normal, height or radius                         | All   |
+| `cam_fixture`       | Build a test Job with stock, tool controller and operation               | All   |
+| `cam_post`          | Post a job; upload, username and remote dialogs are cancelled            | All   |
+| `cam_gcode_diff`    | Compare two G-code outputs                                               | Local |
+| `cam_gouge_check`   | Sweep the tool along link moves and report gouges                        | All   |
+| `cam_coverage`      | Grid check of the material an operation leaves uncut                     | All   |
+| `cam_tests`         | Run CAM unit tests, optionally against a baseline tree                   | Local |
+| `fc_eval`           | Run a script in headless FreeCADCmd and return its real exit code        | Local |
+| `cam_record_demo`   | Record a captioned GUI demo on an off-screen display                     | GUI   |
 
 #### GUI health (2 tools)
 
-| Tool         | Description                                                                    | Mode |
-| ------------ | ------------------------------------------------------------------------------ | ---- |
+| Tool         | Description                                                                   | Mode |
+| ------------ | ----------------------------------------------------------------------------- | ---- |
 | `gui_health` | Open panels, stray dialogs, active document, new Report-view errors           | GUI  |
 | `gui_reset`  | Close stray panels and dialogs; gets in even while a run is stuck on a dialog | GUI  |
 
@@ -574,15 +434,17 @@ FreeCAD as `import guidriver`; CAM parts in `guidriver.cam`). It runs real GUI c
 reads and sets task panel widgets through their own Qt API (GUI gating included), presses
 the task view's OK/Cancel and answers modal dialogs by rule; a dialog no rule matches is
 rejected after 3 s and reported. See its [README](freecad/RobustMCPBridge/guidriver/README.md).
+These six tools work on every platform; only the real mouse/keyboard helpers (`xmouse`,
+`xkeys_external`) need Linux with X11.
 
-| Tool               | Description                                                        | Mode |
-| ------------------ | ------------------------------------------------------------------ | ---- |
-| `gui_run_command`  | Run a command like a toolbar click, with modal-dialog rules        | GUI  |
-| `gui_panel`        | Dump / set / click / OK / Cancel the open task panel               | GUI  |
-| `gui_edit`         | Open an object's editor like a tree double-click                   | GUI  |
-| `cam_gui_add_base` | Base Geometry "Add" on the open CAM operation panel                | GUI  |
-| `cam_gui_check`    | Pre-post warnings (and summary) for a CAM job                      | GUI  |
-| `cam_gui_post`     | Post a job, answering the post's dialogs by rule (never uploads)   | GUI  |
+| Tool               | Description                                                      | Mode |
+| ------------------ | ---------------------------------------------------------------- | ---- |
+| `gui_run_command`  | Run a command like a toolbar click, with modal-dialog rules      | GUI  |
+| `gui_panel`        | Dump / set / click / OK / Cancel the open task panel             | GUI  |
+| `gui_edit`         | Open an object's editor like a tree double-click                 | GUI  |
+| `cam_gui_add_base` | Base Geometry "Add" on the open CAM operation panel              | GUI  |
+| `cam_gui_check`    | Pre-post warnings (and summary) for a CAM job                    | GUI  |
+| `cam_gui_post`     | Post a job, answering the post's dialogs by rule (never uploads) | GUI  |
 
 ---
 
@@ -590,151 +452,35 @@ rejected after 3 s and reported. See its [README](freecad/RobustMCPBridge/guidri
 
 This section covers development setup, contributing, and working with the codebase.
 
-## Robust MCP Server Development
+## MCP+ Server Development
 
 ### Prerequisites
 
-- [mise](https://mise.jdx.dev/) - Tool version manager
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [FreeCAD](https://www.freecad.org/) 1.1 or newer
 
 ### Initial Setup
 
-```bash
-# Clone the repository
-git clone https://github.com/spkane/freecad-addon-robust-mcp-server.git
-cd freecad-addon-robust-mcp-server
-
-# Install mise via the Official mise installer script (if not already installed)
-curl https://mise.run | sh
-
-# Install all tools (Python 3.11, uv, just, pre-commit)
-mise trust
-mise install
-
-# Set up the development environment
-just setup
-```
-
-This installs:
-
-- **Python 3.11** - Required for FreeCAD ABI compatibility
-- **uv** - Fast Python package manager
-- **just** - Command runner for development workflows
-- **pre-commit** - Git hooks for code quality
-
-### MCP Client Configuration (Development)
-
-Create a `.mcp.json` file in the project directory:
-
-```json
-{
-  "mcpServers": {
-    "freecad": {
-      "command": "/path/to/mise/shims/uv",
-      "args": ["run", "--project", "/path/to/freecad-addon-robust-mcp-server", "freecad-mcp"],
-      "env": {
-        "FREECAD_MODE": "xmlrpc",
-        "FREECAD_SOCKET_HOST": "localhost",
-        "FREECAD_XMLRPC_PORT": "9875",
-        "PATH": "/path/to/mise/shims:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-      }
-    }
-  }
-}
-```
-
-**Replace the paths with your actual paths:**
-
-| Placeholder                                 | Description                     | Example                                        |
-| ------------------------------------------- | ------------------------------- | ---------------------------------------------- |
-| `/path/to/mise/shims/uv`                    | Full path to uv via mise shims  | `~/.local/share/mise/shims/uv`                 |
-| `/path/to/freecad-addon-robust-mcp-server`  | Project directory               | `/home/me/dev/freecad-addon-robust-mcp-server` |
-| `/path/to/mise/shims`                       | mise shims directory for PATH   | `~/.local/share/mise/shims`                    |
-
-**Finding your mise shims path:**
+Clone the repository into FreeCAD's `Mod` folder (see [Finding the add-on folder](#finding-the-add-on-folder)),
+so FreeCAD loads the add-on from your working copy, then install the development tools:
 
 ```bash
-mise where uv | sed 's|/installs/.*|/shims|'
-# Example: /home/user/.local/share/mise/shims (on Linux) or ~/.local/share/mise/shims (on macOS)
+git clone https://github.com/Connor9220/freecad-mcp-plus.git <Mod folder>/freecad-mcp-plus
+cd <Mod folder>/freecad-mcp-plus
+uv sync --extra dev
+uv run pre-commit install
 ```
 
-### Development Workflow
-
-Commands are organized into modules. Use `just` to see top-level commands, or `just list-<module>` to see module-specific commands.
-
-```bash
-# Show top-level commands and available modules
-just
-
-# Show commands in a specific module
-just list-mcp           # Robust MCP Server commands
-just list-freecad       # FreeCAD plugin/macro commands
-just list-install       # Installation commands
-just list-quality       # Code quality commands
-just list-testing       # Test commands
-just list-docker        # Docker commands
-just list-documentation # Documentation commands
-just list-dev           # Development utilities
-
-# List ALL commands from all modules
-just list-all
-
-# Install/update dependencies
-just install::mcp-server
-
-# Run all checks (linting, type checking, tests)
-just all
-
-# Quality commands
-just quality::lint       # Run ruff linter
-just quality::typecheck  # Run mypy type checker
-just quality::format     # Format code
-just quality::check      # Run all pre-commit hooks
-
-# Testing commands
-just testing::unit       # Run unit tests
-just testing::cov        # Run tests with coverage
-just testing::integration # Run integration tests
-
-# Run the Robust MCP Server (or with debug logging)
-just mcp::run
-just mcp::run-debug
-
-# Docker commands
-just docker::build        # Build image for local architecture
-just docker::build-multi  # Build multi-arch image (amd64 + arm64)
-just docker::run          # Run container
-```
-
-### Running FreeCAD with the MCP Bridge
-
-#### GUI Mode (recommended for development)
-
-```bash
-# Start FreeCAD with auto-started bridge
-just freecad::run-gui
-```
-
-#### Headless Mode (for automation/CI)
-
-```bash
-just freecad::run-headless
-```
+Point your MCP client at the clone as in [MCP Client Configuration](#mcp-client-configuration).
 
 ### Running Tests
 
 ```bash
-# Unit tests only (no FreeCAD required)
-just testing::unit
+# Unit tests (no FreeCAD required)
+uv run pytest tests/unit -o addopts=""
 
-# Unit tests with coverage
-just testing::cov
-
-# Integration tests (requires running FreeCAD bridge)
-just testing::integration
-
-# Integration tests with automatic FreeCAD startup
-just testing::integration-auto
+# Integration tests (requires FreeCAD running with the bridge started)
+uv run pytest tests/integration -o addopts=""
 ```
 
 ### Code Quality
@@ -748,12 +494,9 @@ The project uses strict code quality checks via pre-commit:
 - **Secrets scanning** - Gitleaks, detect-secrets, TruffleHog
 
 ```bash
-# Run all pre-commit hooks
-just quality::check
-
-# Run security/secrets scans
-just quality::security
-just quality::secrets
+uv run ruff check freecad src             # Lint
+uv run mypy src                           # Type check
+uv run pre-commit run --all-files         # All hooks
 ```
 
 ---
@@ -779,7 +522,7 @@ runs, Origin check, running files). All three are MIT licensed; their notices ar
 
 spkane's original acknowledgements:
 
-This project was developed after analyzing several existing FreeCAD Robust MCP implementations. We are grateful to these projects for their pioneering work and the ideas they contributed to the FreeCAD + AI ecosystem:
+This project was developed after analyzing several existing FreeCAD MCP implementations. We are grateful to these projects for their pioneering work and the ideas they contributed to the FreeCAD + AI ecosystem:
 
 ### Related Projects
 
