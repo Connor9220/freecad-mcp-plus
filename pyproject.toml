@@ -30,7 +30,7 @@ keywords = [
     "automation",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
