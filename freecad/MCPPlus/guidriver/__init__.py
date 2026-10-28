@@ -6,7 +6,7 @@
 # bridge): toolbar commands, task panel widgets, OK/Cancel, modal dialogs
 # answered by rule. CAM-specific rules and checks live in guidriver.cam.
 #
-#   import guidriver as gd
+#   from freecad.MCPPlus import guidriver as gd
 #   r = gd.run("PartDesign_Pad", modal=[gd.modal.message_box("OK")])
 #   p = gd.panel()                      # the open task panel
 #   p.dump()                            # pages/widgets: value, hidden, disabled
@@ -38,7 +38,7 @@ __all__ = [
 def _reload_order(name):
     # Generic modules first, then guidriver.cam's (deepest first), packages
     # last, so `from .x import f` bindings pick up the reloaded functions.
-    parts = name.split(".")
+    parts = name.split(".")[__name__.count(".") :]
     cam = len(parts) > 1 and parts[1] == "cam"
     return (cam, -len(parts), name)
 
@@ -49,7 +49,7 @@ def reload():
     import sys
 
     for name in sorted(
-        [n for n in sys.modules if n.startswith("guidriver.")], key=_reload_order
+        [n for n in sys.modules if n.startswith(__name__ + ".")], key=_reload_order
     ):
         importlib.reload(sys.modules[name])
-    return importlib.reload(sys.modules["guidriver"])
+    return importlib.reload(sys.modules[__name__])

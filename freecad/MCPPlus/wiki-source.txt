@@ -2,7 +2,7 @@
 <translate>
 
 <!--T:1-->
-[[Image:FreecadRobustMCPBridge.svg|thumb|128px|Robust MCP Bridge Workbench icon]]
+[[Image:MCPPlus.svg|thumb|128px|Robust MCP Bridge Workbench icon]]
 
 </translate>
 {{TOCright}}
@@ -43,9 +43,9 @@ This workbench is designed to work with the [https://pypi.org/project/freecad-ro
 Download the latest release from [https://github.com/spkane/freecad-robust-mcp-and-more/releases GitHub Releases] and extract to your FreeCAD Mod directory:
 
 </translate>
-* '''Linux''': {{FileName|~/.local/share/FreeCAD/Mod/FreecadRobustMCPBridge/}}
-* '''macOS''': {{FileName|~/Library/Application Support/FreeCAD/Mod/FreecadRobustMCPBridge/}}
-* '''Windows''': {{FileName|%APPDATA%/FreeCAD/Mod/FreecadRobustMCPBridge/}}
+* '''Linux''': {{FileName|~/.local/share/FreeCAD/Mod/FreecadMCPPlus/}}
+* '''macOS''': {{FileName|~/Library/Application Support/FreeCAD/Mod/FreecadMCPPlus/}}
+* '''Windows''': {{FileName|%APPDATA%/FreeCAD/Mod/FreecadMCPPlus/}}
 <translate>
 
 ==Usage== <!--T:12-->
@@ -53,7 +53,7 @@ Download the latest release from [https://github.com/spkane/freecad-robust-mcp-a
 ===GUI mode=== <!--T:13-->
 
 <!--T:14-->
-[[Image:Addon_RobustMCPBridge_toolbar.png|Robust MCP Bridge workbench toolbar]]
+[[Image:Addon_MCPPlus_toolbar.png|Robust MCP Bridge workbench toolbar]]
 
 <!--T:15-->
 # Switch to the '''Robust MCP Bridge''' workbench using the workbench selector
@@ -65,7 +65,7 @@ Download the latest release from [https://github.com/spkane/freecad-robust-mcp-a
 To stop the bridge, click {{Button|Stop Bridge}} in the toolbar.
 
 <!--T:17-->
-[[Image:Addon_RobustMCPBridge_statusbar.png|Robust MCP Bridge workbench statusbar]]
+[[Image:Addon_MCPPlus_statusbar.png|Robust MCP Bridge workbench statusbar]]
 
 ===Headless mode=== <!--T:18-->
 
@@ -76,7 +76,7 @@ For automation and CI/CD pipelines, the bridge can run without the GUI:
 '''Linux:'''
 </translate>
 {{Code|code=
-freecadcmd ~/.local/share/FreeCAD/Mod/FreecadRobustMCPBridge/freecad_mcp_bridge/blocking_bridge.py
+freecadcmd ~/.local/share/FreeCAD/Mod/FreecadMCPPlus/freecad_mcp_bridge/blocking_bridge.py
 }}
 <translate>
 
@@ -86,7 +86,7 @@ freecadcmd ~/.local/share/FreeCAD/Mod/FreecadRobustMCPBridge/freecad_mcp_bridge/
 </translate>
 {{Code|code=
 /Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd \
-    ~/Library/Application\ Support/FreeCAD/Mod/FreecadRobustMCPBridge/freecad_mcp_bridge/blocking_bridge.py
+    ~/Library/Application\ Support/FreeCAD/Mod/FreecadMCPPlus/freecad_mcp_bridge/blocking_bridge.py
 }}
 <translate>
 
@@ -112,7 +112,7 @@ Access preferences via {{MenuCommand|Edit → Preferences → Robust MCP Bridge}
 |}
 
 <!--T:26-->
-[[Image:Addon RobustMCPBridge preferences.png|800px|Robust MCP Bridge workbench preference pane]]
+[[Image:Addon MCPPlus preferences.png|800px|Robust MCP Bridge workbench preference pane]]
 
 ==Features by Mode== <!--T:27-->
 

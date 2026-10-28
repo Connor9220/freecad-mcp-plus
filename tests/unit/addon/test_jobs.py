@@ -7,11 +7,7 @@ from pathlib import Path
 
 # Loaded by path: importing the add-on package itself needs FreeCAD
 _JOBS_PATH = (
-    Path(__file__).parents[3]
-    / "freecad"
-    / "RobustMCPBridge"
-    / "freecad_mcp_bridge"
-    / "jobs.py"
+    Path(__file__).parents[3] / "freecad" / "MCPPlus" / "freecad_mcp_bridge" / "jobs.py"
 )
 _spec = importlib.util.spec_from_file_location("mcp_bridge_jobs", _JOBS_PATH)
 jobs = importlib.util.module_from_spec(_spec)

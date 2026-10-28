@@ -3,22 +3,22 @@
 
     <name>MCP+</name>
     <description>Lets AI assistants (Claude Code and other MCP clients) work in your live FreeCAD session, with CAM tools. Built on spkane's Robust MCP Bridge, with ideas from neka-nat/freecad-mcp and CREATeNG/freecad-mcp-bridge.</description>
-    <icon>freecad/RobustMCPBridge/Resources/Icons/FreecadRobustMCPBridge.svg</icon>
+    <icon>freecad/MCPPlus/Resources/Icons/MCPPlus.svg</icon>
 
     <version>0.7.0</version>
-    <date>2026-10-07</date>
+    <date>2026-10-28</date>
 
     <maintainer email="billy@ivdc.com">Billy Huddleston</maintainer>
     <author email="spkane@gmail.com">Sean P. Kane</author>
 
     <license file="LICENSE">MIT</license>
 
-    <freecadmin>1.1</freecadmin>
+    <freecadmin>1.1.0</freecadmin>
 
     <url type="repository" branch="main">https://github.com/connor9220/freecad-mcp-plus</url>
     <url type="bugtracker">https://github.com/connor9220/freecad-mcp-plus/issues</url>
-    <url type="readme">https://github.com/connor9220/freecad-mcp-plus/blob/main/README.md</url>
-    <url type="documentation">https://spkane.github.io/freecad-addon-robust-mcp-server/latest/</url>
+    <url type="readme">https://raw.githubusercontent.com/connor9220/freecad-mcp-plus/main/README.md</url>
+    <url type="documentation">https://github.com/connor9220/freecad-mcp-plus#readme</url>
 
     <tag>workbench</tag>
     <tag>MCP</tag>
@@ -34,12 +34,12 @@
         <workbench>
             <name>MCP+</name>
             <version>0.7.0</version>
-            <date>2026-10-07</date>
+            <date>2026-10-28</date>
             <description>MCP+ bridge workbench for AI assistant integration with FreeCAD. Uses the Model Context Protocol (MCP) to connect AI assistants like Claude Code and Cursor to FreeCAD. Works in both GUI mode (with full visual features including screenshots, colors, and camera control) and headless mode (for automation and CI/CD). Provides toolbar commands to start, stop, and monitor the MCP bridge server. Supports XML-RPC and JSON-RPC protocols with 150+ CAD tools.</description>
-            <classname>FreecadRobustMCPBridgeWorkbench</classname>
-            <subdirectory>./freecad/RobustMCPBridge/</subdirectory>
-            <icon>Resources/Icons/FreecadRobustMCPBridge.svg</icon>
-            <freecadmin>1.1</freecadmin>
+            <classname>MCPPlusWorkbench</classname>
+            <subdirectory>./freecad/MCPPlus/</subdirectory>
+            <icon>Resources/Icons/MCPPlus.svg</icon>
+            <freecadmin>1.1.0</freecadmin>
         </workbench>
 
     </content>

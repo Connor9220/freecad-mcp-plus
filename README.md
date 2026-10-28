@@ -429,11 +429,11 @@ server (headless FreeCADCmd, file comparisons) and don't need the bridge.
 
 #### GuiDriver - drive the GUI like a user (6 tools)
 
-The add-on ships `guidriver` (in `freecad/RobustMCPBridge/guidriver/`, importable inside
-FreeCAD as `import guidriver`; CAM parts in `guidriver.cam`). It runs real GUI commands,
+The add-on ships `guidriver` (in `freecad/MCPPlus/guidriver/`, importable inside
+FreeCAD as `freecad.MCPPlus.guidriver`; CAM parts in `guidriver.cam`). It runs real GUI commands,
 reads and sets task panel widgets through their own Qt API (GUI gating included), presses
 the task view's OK/Cancel and answers modal dialogs by rule; a dialog no rule matches is
-rejected after 3 s and reported. See its [README](freecad/RobustMCPBridge/guidriver/README.md).
+rejected after 3 s and reported. See its [README](freecad/MCPPlus/guidriver/README.md).
 These six tools work on every platform; only the real mouse/keyboard helpers (`xmouse`,
 `xkeys_external`) need Linux with X11.
 

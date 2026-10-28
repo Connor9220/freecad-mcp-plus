@@ -55,7 +55,7 @@ documentation infrastructure.
 | Product or area           | Responsibility                                                                                               | Current shape                                                      | Release unit                                        |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------------------------- |
 | Python MCP server         | Presents tools, resources, and prompts to MCP clients; delegates FreeCAD work to a bridge                    | `freecad_mcp` package, CLI `freecad-mcp`, stdio or Streamable HTTP | PyPI package, Docker image, GitHub release          |
-| FreeCAD Robust MCP Bridge | Runs inside FreeCAD, serializes work onto the GUI thread, and exposes XML-RPC and newline-delimited JSON-RPC | Namespaced FreeCAD addon under `freecad/RobustMCPBridge`           | FreeCAD Addon Manager repository and GitHub archive |
+| FreeCAD Robust MCP Bridge | Runs inside FreeCAD, serializes work onto the GUI thread, and exposes XML-RPC and newline-delimited JSON-RPC | Namespaced FreeCAD addon under `freecad/MCPPlus`           | FreeCAD Addon Manager repository and GitHub archive |
 | Bridge adapters           | Let the MCP server use XML-RPC, socket JSON-RPC, or direct embedded imports                                  | Common `FreecadBridge` abstraction with three implementations      | Included in the Python package                      |
 | MCP surface               | CAD operations grouped by domain                                                                             | 152 tools, 13 resources, and 12 prompts                            | Included in the Python package                      |
 | Documentation             | Installation, connection modes, API references, development, and release procedures                          | MkDocs Material with versioning through mike                       | GitHub Pages                                        |
@@ -95,8 +95,8 @@ same minor version.
 | Embedded adapter      | `freecad_mcp.bridge.embedded`                              | Linux-only direct import; version and ABI sensitive                                                                                             |
 | Tool domains          | `freecad_mcp.tools` package                                | Documents, objects, Part, Part Design, Sketcher, Draft, Spreadsheet, view, import/export, macros, execution, validation, and supporting domains |
 | Resources and prompts | `freecad_mcp.resources`, `freecad_mcp.prompts`             | Read-oriented context and reusable workflows                                                                                                    |
-| Workbench lifecycle   | `RobustMCPBridge.init_gui`, command and preference modules | Registration, controls, status UI, and settings                                                                                                 |
-| Workbench bridge      | `RobustMCPBridge.freecad_mcp_bridge.server`                | TCP/XML-RPC listeners, execution queue, arbitrary Python execution, and shutdown                                                                |
+| Workbench lifecycle   | `MCPPlus.init_gui`, command and preference modules | Registration, controls, status UI, and settings                                                                                                 |
+| Workbench bridge      | `MCPPlus.freecad_mcp_bridge.server`                | TCP/XML-RPC listeners, execution queue, arbitrary Python execution, and shutdown                                                                |
 | Tests                 | Unit, integration, and `just` command tests                | Strong unit breadth; real bridge coverage is intentionally excluded from unit coverage                                                          |
 
 The project is not small: the production Python under `src/` and `freecad/` is
@@ -195,7 +195,7 @@ The release must state this directly:
 host is changed  
 **Evidence:** The workbench bridge accepts socket `execute` requests, registers
 XML-RPC `execute`, and calls `exec` with builtins in
-`freecad/RobustMCPBridge/freecad_mcp_bridge/server.py:773-786`, with listeners
+`freecad/MCPPlus/freecad_mcp_bridge/server.py:773-786`, with listeners
 created at lines 838-844 and 1022-1028. No authentication check appears in either
 request path.  
 **Exploit:** A malicious local webpage helper, compromised process, or another
@@ -551,7 +551,7 @@ Adopt this policy:
 
 ## FreeCAD Addon Manager release
 
-The namespaced `freecad/RobustMCPBridge` layout aligns with current FreeCAD addon
+The namespaced `freecad/MCPPlus` layout aligns with current FreeCAD addon
 guidance. Before requesting inclusion in the Addon Index:
 
 1. Resolve bridge authentication and unsafe-code defaults.

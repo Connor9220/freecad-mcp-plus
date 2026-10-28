@@ -332,8 +332,8 @@ def sync_status_with_bridge() -> None:
         if not _check_main_thread("sync_status_with_bridge"):
             return
 
-        from commands import _mcp_plugin
-        from preferences import get_status_bar_enabled
+        from ..commands import _mcp_plugin
+        from ..preferences import get_status_bar_enabled
 
         if not get_status_bar_enabled():
             return

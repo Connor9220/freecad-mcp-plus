@@ -4,7 +4,7 @@ These tests verify that the addon has the correct file structure and
 that the Python files are valid (can be parsed).
 
 Note: This addon uses the new-style namespace package format:
-    freecad/RobustMCPBridge/
+    freecad/MCPPlus/
 """
 
 import ast
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 # Get the addon directory path (new-style namespace package format)
-ADDON_DIR = Path(__file__).parent.parent.parent.parent / "freecad" / "RobustMCPBridge"
+ADDON_DIR = Path(__file__).parent.parent.parent.parent / "freecad" / "MCPPlus"
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ class TestAddonFileStructure:
             ("__init__.py", "__init__.py (new-style)"),
             ("init_gui.py", "init_gui.py (new-style)"),
             (
-                Path("Resources") / "Icons" / "FreecadRobustMCPBridge.svg",
+                Path("Resources") / "Icons" / "MCPPlus.svg",
                 "workbench icon",
             ),
             (Path("freecad_mcp_bridge") / "__init__.py", "bridge __init__.py"),
@@ -129,7 +129,7 @@ class TestAddonMetadata:
         """init_gui.py should define the workbench class."""
         init_gui_file = ADDON_DIR / "init_gui.py"
         code = init_gui_file.read_text()
-        assert "FreecadRobustMCPBridgeWorkbench" in code
+        assert "MCPPlusWorkbench" in code
         assert "Gui.Workbench" in code or "Workbench" in code
 
     def test_init_gui_py_has_commands(self) -> None:
@@ -171,7 +171,7 @@ class TestAddonMetadata:
 
     def test_icon_is_valid_svg(self) -> None:
         """The icon should be a valid SVG file."""
-        icon_file = ADDON_DIR / "Resources" / "Icons" / "FreecadRobustMCPBridge.svg"
+        icon_file = ADDON_DIR / "Resources" / "Icons" / "MCPPlus.svg"
         content = icon_file.read_text()
         assert content.startswith("<?xml") or content.startswith("<svg")
         assert "<svg" in content
@@ -183,7 +183,7 @@ class TestAddonIconSize:
 
     def test_icon_size_under_10kb(self) -> None:
         """The icon file should be under 10KB (FreeCAD requirement)."""
-        icon_file = ADDON_DIR / "Resources" / "Icons" / "FreecadRobustMCPBridge.svg"
+        icon_file = ADDON_DIR / "Resources" / "Icons" / "MCPPlus.svg"
         size_bytes = icon_file.stat().st_size
         size_kb = size_bytes / 1024
         assert size_kb <= 10, f"Icon is {size_kb:.2f}KB, must be <= 10KB"
@@ -204,12 +204,12 @@ class TestPackageXml:
 
     def test_workbench_classname(self, package_xml: str) -> None:
         """package.xml should reference the correct workbench classname."""
-        assert "<classname>FreecadRobustMCPBridgeWorkbench</classname>" in package_xml
+        assert "<classname>MCPPlusWorkbench</classname>" in package_xml
 
     def test_workbench_subdirectory(self, package_xml: str) -> None:
         """package.xml should reference the correct subdirectory (new-style)."""
-        assert "./freecad/RobustMCPBridge/" in package_xml
+        assert "./freecad/MCPPlus/" in package_xml
 
     def test_workbench_icon(self, package_xml: str) -> None:
         """package.xml should reference the workbench icon (new-style path)."""
-        assert "Resources/Icons/FreecadRobustMCPBridge.svg</icon>" in package_xml
+        assert "Resources/Icons/MCPPlus.svg</icon>" in package_xml

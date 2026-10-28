@@ -17,11 +17,7 @@ from freecad_mcp.bridge.auth import token_file as server_token_file
 
 # Loaded by path: importing the add-on package itself needs FreeCAD
 _AUTH_PATH = (
-    Path(__file__).parents[3]
-    / "freecad"
-    / "RobustMCPBridge"
-    / "freecad_mcp_bridge"
-    / "auth.py"
+    Path(__file__).parents[3] / "freecad" / "MCPPlus" / "freecad_mcp_bridge" / "auth.py"
 )
 _spec = importlib.util.spec_from_file_location("mcp_bridge_auth", _AUTH_PATH)
 bridge_auth = importlib.util.module_from_spec(_spec)

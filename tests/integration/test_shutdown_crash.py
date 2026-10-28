@@ -251,11 +251,7 @@ def startup_script() -> str:
     projectRoot = testsDir.parent.parent
 
     scriptPath = (
-        projectRoot
-        / "freecad"
-        / "RobustMCPBridge"
-        / "freecad_mcp_bridge"
-        / "startup_bridge.py"
+        projectRoot / "freecad" / "MCPPlus" / "freecad_mcp_bridge" / "startup_bridge.py"
     )
 
     if not scriptPath.exists():
@@ -453,11 +449,7 @@ if __name__ == "__main__":
     testsDir = Path(__file__).parent
     projectRoot = testsDir.parent.parent
     script = str(
-        projectRoot
-        / "freecad"
-        / "RobustMCPBridge"
-        / "freecad_mcp_bridge"
-        / "startup_bridge.py"
+        projectRoot / "freecad" / "MCPPlus" / "freecad_mcp_bridge" / "startup_bridge.py"
     )
 
     print(f"FreeCAD binary: {binary}")

@@ -3,9 +3,9 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "freecad-robust-mcp"
+name = "freecad-mcp-plus"
 dynamic = ["version"]
-description = "Robust MCP Server for FreeCAD integration with Claude Code and other AI assistants"
+description = "MCP+ server: lets Claude Code and other AI assistants work in a live FreeCAD session"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ authors = [
     { name = "Sean P. Kane", email = "spkane@gmail.com" }
 ]
 maintainers = [
-    { name = "Sean P. Kane", email = "spkane@gmail.com" }
+    { name = "Billy Huddleston", email = "billy@ivdc.com" }
 ]
 keywords = [
     "freecad",
@@ -102,12 +102,11 @@ dev = [
 freecad-mcp = "freecad_mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/spkane/freecad-robust-mcp-and-more"
-Documentation = "https://github.com/spkane/freecad-robust-mcp-and-more#readme"
-Repository = "https://github.com/spkane/freecad-robust-mcp-and-more.git"
-Issues = "https://github.com/spkane/freecad-robust-mcp-and-more/issues"
-"Release Notes" = "https://github.com/spkane/freecad-robust-mcp-and-more/blob/main/src/freecad_mcp/RELEASE_NOTES.md"
-"Docker Hub" = "https://hub.docker.com/r/spkane/freecad-robust-mcp"
+Homepage = "https://github.com/connor9220/freecad-mcp-plus"
+Documentation = "https://github.com/connor9220/freecad-mcp-plus#readme"
+Repository = "https://github.com/connor9220/freecad-mcp-plus.git"
+Issues = "https://github.com/connor9220/freecad-mcp-plus/issues"
+"Release Notes" = "https://github.com/connor9220/freecad-mcp-plus/blob/main/src/freecad_mcp/RELEASE_NOTES.md"
 
 [tool.hatch.version]
 source = "vcs"
@@ -199,7 +198,7 @@ convention = "google"
 ]
 # GuiDriver runs INSIDE the FreeCAD GUI (imported as `guidriver`); compact
 # Qt-driving code in the style of FreeCAD's own modules
-"freecad/RobustMCPBridge/guidriver/**/*.py" = [
+"freecad/MCPPlus/guidriver/**/*.py" = [
     "ANN",    # Qt/FreeCAD types are dynamic
     "D",      # comment headers instead of docstrings on every helper
     "PTH",    # os.path - matches FreeCAD code style

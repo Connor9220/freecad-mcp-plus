@@ -44,24 +44,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-try:
-    from .auth import load_or_create_token, read_token, token_file
-    from .jobs import (
-        DEFAULT_PAGE_CHARS,
-        DEFAULT_PAGE_WAIT_MS,
-        Job,
-        JobRegistry,
-        JobStream,
-    )
-except ImportError:  # loaded as a plain module by the headless runners
-    from auth import load_or_create_token, read_token, token_file
-    from jobs import (
-        DEFAULT_PAGE_CHARS,
-        DEFAULT_PAGE_WAIT_MS,
-        Job,
-        JobRegistry,
-        JobStream,
-    )
+from .auth import load_or_create_token, read_token, token_file
+from .jobs import (
+    DEFAULT_PAGE_CHARS,
+    DEFAULT_PAGE_WAIT_MS,
+    Job,
+    JobRegistry,
+    JobStream,
+)
 
 # Longest execution an XML-RPC caller may ask for
 MAX_EXECUTE_TIMEOUT_MS = 1_800_000

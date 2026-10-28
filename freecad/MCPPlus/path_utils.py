@@ -20,8 +20,8 @@ import os  # noqa: PTH
 import FreeCAD
 
 # Addon directory name - single source of truth for renames
-# Uses new-style namespace package format: freecad/RobustMCPBridge/
-_ADDON_DIRNAME = "RobustMCPBridge"
+# Uses new-style namespace package format: freecad/MCPPlus/
+_ADDON_DIRNAME = "MCPPlus"
 _ADDON_NAMESPACE = "freecad"
 
 # Cache for addon path to avoid repeated filesystem lookups
@@ -52,7 +52,7 @@ def get_addon_path() -> str:
         pass
 
     # Method 2: Use FreeCAD's Mod path + namespace package structure
-    # New-style: Mod/freecad/RobustMCPBridge/
+    # New-style: Mod/freecad/MCPPlus/
     try:
         mod_path = os.path.join(  # noqa: PTH118
             FreeCAD.getUserAppDataDir(), "Mod", _ADDON_NAMESPACE, _ADDON_DIRNAME
@@ -64,7 +64,7 @@ def get_addon_path() -> str:
         FreeCAD.Console.PrintWarning(f"Could not access Mod directory: {e}\n")
 
     # Method 3: Try versioned FreeCAD directory (FreeCAD 1.x)
-    # New-style: v1-*/Mod/freecad/RobustMCPBridge/
+    # New-style: v1-*/Mod/freecad/MCPPlus/
     try:
         base_path = FreeCAD.getUserAppDataDir()
         for item in os.listdir(base_path):  # noqa: PTH208
@@ -112,16 +112,16 @@ def get_icons_dir() -> str:
 
 
 def get_workbench_icon() -> str:
-    """Get the path to the workbench's main icon (FreecadRobustMCPBridge.svg).
+    """Get the path to the workbench's main icon (MCPPlus.svg).
 
     Returns:
         The absolute path to the workbench icon, or empty string if not found.
     """
     addon_path = get_addon_path()
     if addon_path:
-        # New-style: Resources/Icons/FreecadRobustMCPBridge.svg
+        # New-style: Resources/Icons/MCPPlus.svg
         icon_path = os.path.join(  # noqa: PTH118
-            addon_path, "Resources", "Icons", "FreecadRobustMCPBridge.svg"
+            addon_path, "Resources", "Icons", "MCPPlus.svg"
         )
         if os.path.exists(icon_path):  # noqa: PTH110
             return icon_path

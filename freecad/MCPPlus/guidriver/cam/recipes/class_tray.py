@@ -10,9 +10,10 @@
 # against a PR build can be diffed against one on main.
 
 import FreeCAD
-import guidriver.cam as cd
-from guidriver.cam.recipes import SETUP
 from PySide import QtCore
+
+from ... import cam as cd
+from . import SETUP
 
 M = cd.modal
 

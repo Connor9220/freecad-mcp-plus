@@ -15,6 +15,7 @@ GC won't try to destroy them again.
 
 from __future__ import annotations
 
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -26,6 +27,13 @@ def _clear_bridge_cache() -> None:
     for mod_name in list(sys.modules.keys()):
         if "freecad_mcp_bridge" in mod_name:
             del sys.modules[mod_name]
+
+
+@pytest.fixture(autouse=True)
+def _no_auto_start():
+    """Importing the bridge runs the add-on package's __init__.py; keep its auto-start off."""
+    with patch.dict(os.environ, {"FREECAD_MCP_TESTING": "1"}):
+        yield
 
 
 class TestCleanupForExit:
@@ -91,7 +99,7 @@ class TestCleanupForExit:
         """
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
 
@@ -117,7 +125,7 @@ class TestCleanupForExit:
         """
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
         plugin._timer = MagicMock()  # type: ignore[assignment]
@@ -136,7 +144,7 @@ class TestCleanupForExit:
         """_cleanup_for_exit should stop QTimer objects."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
 
@@ -160,7 +168,7 @@ class TestCleanupForExit:
         """_cleanup_for_exit should disconnect timer signals."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
 
@@ -190,7 +198,7 @@ class TestCleanupForExit:
         """
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
 
@@ -220,7 +228,7 @@ class TestCleanupForExit:
         """
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
 
@@ -240,7 +248,7 @@ class TestCleanupForExit:
         """_cleanup_for_exit should set _running to False."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
         plugin._running = True
@@ -253,7 +261,7 @@ class TestCleanupForExit:
         """_cleanup_for_exit should be safe when no timers exist (headless mode)."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
         # Simulate headless mode: no timers were created
@@ -270,7 +278,7 @@ class TestCleanupForExit:
         """_cleanup_for_exit should be safe to call multiple times."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
         plugin._timer = MagicMock()  # type: ignore[assignment]
@@ -320,7 +328,7 @@ class TestAtexitHandler:
         """Import a fresh server module and yield it, cleaning up _activeServers after."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         yield server
 
@@ -483,7 +491,7 @@ class TestAtexitRegistration:
         """Creating a plugin should register it in _activeServers."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         initial_count = len(server._activeServers)
         plugin = server.FreecadMCPPlugin()
@@ -497,7 +505,7 @@ class TestAtexitRegistration:
         """atexit.register should be called at most once across multiple plugins."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         # Reset the flag to test fresh registration
         server._atexitRegistered = False
@@ -515,7 +523,7 @@ class TestAtexitRegistration:
         """_activeServers uses WeakSet, so unreferenced plugins can be GC'd."""
         _clear_bridge_cache()
 
-        from freecad.RobustMCPBridge.freecad_mcp_bridge import server
+        from freecad.MCPPlus.freecad_mcp_bridge import server
 
         plugin = server.FreecadMCPPlugin()
         assert plugin in server._activeServers

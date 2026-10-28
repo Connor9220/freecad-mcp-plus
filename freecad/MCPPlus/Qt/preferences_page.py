@@ -216,7 +216,7 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
         This method is called by FreeCAD when the Preferences dialog opens.
         """
         # Import here to avoid circular imports and ensure module is available
-        from preferences import (
+        from ..preferences import (
             get_auto_start,
             get_socket_port,
             get_status_bar_enabled,
@@ -228,8 +228,8 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
         self.xmlrpc_spin.setValue(get_xmlrpc_port())
         self.socket_spin.setValue(get_socket_port())
 
-        from freecad_mcp_bridge.auth import token_file
-        from preferences import get_bind_host, get_require_auth
+        from ..freecad_mcp_bridge.auth import token_file
+        from ..preferences import get_bind_host, get_require_auth
 
         self.require_auth_cb.setChecked(get_require_auth())
         self.bind_host_edit.setText(get_bind_host())
@@ -240,7 +240,7 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
 
         This method is called by FreeCAD when OK or Apply is clicked.
         """
-        from preferences import (
+        from ..preferences import (
             get_socket_port,
             get_xmlrpc_port,
             set_auto_start,
@@ -259,7 +259,7 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
         set_xmlrpc_port(self.xmlrpc_spin.value())
         set_socket_port(self.socket_spin.value())
 
-        from preferences import (
+        from ..preferences import (
             get_bind_host,
             get_require_auth,
             set_bind_host,
@@ -292,7 +292,7 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
 
     def _copy_token(self) -> None:
         """Put the token on the clipboard (creating it if there is none yet)."""
-        from freecad_mcp_bridge.auth import load_or_create_token
+        from ..freecad_mcp_bridge.auth import load_or_create_token
 
         QtWidgets.QApplication.clipboard().setText(load_or_create_token())
         QtWidgets.QMessageBox.information(
@@ -303,7 +303,7 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
 
     def _new_token(self) -> None:
         """Replace the token file with a new token."""
-        from freecad_mcp_bridge.auth import load_or_create_token, token_file
+        from ..freecad_mcp_bridge.auth import load_or_create_token, token_file
 
         answer = QtWidgets.QMessageBox.question(
             self,

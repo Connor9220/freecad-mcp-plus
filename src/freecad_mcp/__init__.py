@@ -23,7 +23,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 __version__: str
 try:
-    __version__ = version("freecad-robust-mcp")
+    __version__ = version("freecad-mcp-plus")
 except PackageNotFoundError:
     # Package is not installed (running from source without pip install -e)
     # Fall back to the generated _version.py if available

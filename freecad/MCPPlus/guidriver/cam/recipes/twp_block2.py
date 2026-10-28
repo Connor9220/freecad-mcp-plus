@@ -15,9 +15,10 @@ import math
 
 import FreeCAD
 import FreeCADGui
-import guidriver.cam as cd
-from guidriver.cam.recipes import SETUP
-from guidriver.cam.recipes.twp_block import _cyl, _faces, _largest, _plane, _settle
+
+from ... import cam as cd
+from . import SETUP
+from .twp_block import _cyl, _faces, _largest, _plane, _settle
 
 M = cd.modal
 V = FreeCAD.Vector

@@ -164,7 +164,7 @@ class TestReleaseBumpCommands:
         # Files that bump commands modify
         files_to_backup = [
             # Workbench files
-            PROJECT_ROOT / "freecad/RobustMCPBridge/freecad_mcp_bridge/__init__.py",
+            PROJECT_ROOT / "freecad/MCPPlus/freecad_mcp_bridge/__init__.py",
             PROJECT_ROOT / "package.xml",
         ]
 
@@ -190,9 +190,7 @@ class TestReleaseBumpCommands:
         assert "Version bump complete" in result.stdout
 
         # Verify version was updated
-        init_file = (
-            PROJECT_ROOT / "freecad/RobustMCPBridge/freecad_mcp_bridge/__init__.py"
-        )
+        init_file = PROJECT_ROOT / "freecad/MCPPlus/freecad_mcp_bridge/__init__.py"
         content = init_file.read_text()
         assert "99.99.99-test" in content
 

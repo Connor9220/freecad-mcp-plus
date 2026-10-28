@@ -5,7 +5,7 @@
 """GuiDriver tools for FreeCAD Robust MCP Server.
 
 Drive the running FreeCAD GUI the way a user would, through the add-on's
-``guidriver`` package (shipped in ``freecad/RobustMCPBridge/guidriver``, which
+``guidriver`` package (shipped in ``freecad/MCPPlus/guidriver``, which
 FreeCAD puts on ``sys.path``): run toolbar commands, read and set task panel
 widgets, press OK/Cancel, and answer modal dialogs by rule. A modal dialog no
 rule matches is rejected after 3 s and logged, so a call never hangs on it.
@@ -27,20 +27,22 @@ import os
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+# The add-on's guidriver package, as FreeCAD imports it
+GUI_MODULE = "freecad.MCPPlus.guidriver.mcp"
+CAM_MODULE = "freecad.MCPPlus.guidriver.cam.mcp"
+
 _IMPORT = """\
 try:
     import {module} as _gd
 except ImportError as _e:
     raise ImportError(
         "guidriver is not importable in this FreeCAD: update the MCP+ add-on "
-        "(it ships freecad/RobustMCPBridge/guidriver)"
+        "(it ships freecad/MCPPlus/guidriver)"
     ) from _e
 """
 
 
-def guidriver_code(
-    func: str, kwargs: dict[str, Any], module: str = "guidriver.mcp"
-) -> str:
+def guidriver_code(func: str, kwargs: dict[str, Any], module: str = GUI_MODULE) -> str:
     """Python run inside FreeCAD: import guidriver and call one entry point."""
     return _IMPORT.format(module=module) + f"_result_ = _gd.{func}(**{kwargs!r})\n"
 
@@ -50,7 +52,7 @@ async def _call(
     func: str,
     kwargs: dict[str, Any],
     timeout_ms: int,
-    module: str = "guidriver.mcp",
+    module: str = GUI_MODULE,
 ) -> dict[str, Any]:
     bridge = await get_bridge()
     result = await bridge.execute_python(
@@ -237,9 +239,7 @@ def register_guidriver_tools(
             "modal": modal_rules,
             "doc_name": doc_name,
         }
-        return await _call(
-            get_bridge, "add_base", kwargs, timeout_ms, "guidriver.cam.mcp"
-        )
+        return await _call(get_bridge, "add_base", kwargs, timeout_ms, CAM_MODULE)
 
     @mcp.tool()
     async def cam_gui_check(
@@ -274,7 +274,7 @@ def register_guidriver_tools(
             "summary": include_summary,
             "doc_name": doc_name,
         }
-        return await _call(get_bridge, "check", kwargs, timeout_ms, "guidriver.cam.mcp")
+        return await _call(get_bridge, "check", kwargs, timeout_ms, CAM_MODULE)
 
     @mcp.tool()
     async def cam_gui_post(
@@ -331,4 +331,4 @@ def register_guidriver_tools(
             ],
             "doc_name": doc_name,
         }
-        return await _call(get_bridge, "post", kwargs, timeout_ms, "guidriver.cam.mcp")
+        return await _call(get_bridge, "post", kwargs, timeout_ms, CAM_MODULE)

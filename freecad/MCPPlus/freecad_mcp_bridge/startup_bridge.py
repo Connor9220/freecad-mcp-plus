@@ -30,11 +30,6 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-# Add the script's directory to sys.path so we can import the server module
-script_dir = str(Path(__file__).resolve().parent)
-if script_dir not in sys.path:
-    sys.path.insert(0, script_dir)
-
 # Check if we're running inside FreeCAD
 try:
     import FreeCAD
@@ -47,6 +42,24 @@ except ImportError:
     print("Or on macOS:")
     print("  open -a FreeCAD.app --args /path/to/startup_bridge.py")
     sys.exit(1)
+
+# Import through the installed add-on (freecad.MCPPlus) so this script sees the bridge its
+# workbench may have started; from a plain checkout, load the package next to this script
+try:
+    from freecad.MCPPlus.freecad_mcp_bridge.bridge_utils import (
+        GuiWaiter,
+        get_running_plugin,
+        register_mcp_plugin,
+    )
+    from freecad.MCPPlus.freecad_mcp_bridge.server import FreecadMCPPlugin
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from freecad_mcp_bridge.bridge_utils import (
+        GuiWaiter,
+        get_running_plugin,
+        register_mcp_plugin,
+    )
+    from freecad_mcp_bridge.server import FreecadMCPPlugin
 
 # Global reference to GuiWaiter to prevent garbage collection
 _gui_waiter: Any | None = None
@@ -88,8 +101,6 @@ def _start_bridge() -> None:
             _gui_waiter.start()
     """
     # Check if bridge is already running (from auto-start in Init.py)
-    from bridge_utils import get_running_plugin
-
     if get_running_plugin() is not None:
         FreeCAD.Console.PrintMessage(
             "MCP+ Bridge already running (started by workbench auto-start)\n"
@@ -97,8 +108,6 @@ def _start_bridge() -> None:
         return
 
     try:
-        from server import FreecadMCPPlugin
-
         # Get configuration from environment variables (with defaults)
         try:
             socket_port = int(os.environ.get("FREECAD_SOCKET_PORT", "9876"))
@@ -119,8 +128,6 @@ def _start_bridge() -> None:
 
         # Register plugin with commands module so Init.py auto-start can see it
         # This prevents both scripts from trying to start separate bridges
-        from bridge_utils import register_mcp_plugin
-
         register_mcp_plugin(plugin, xmlrpc_port, socket_port)
 
         FreeCAD.Console.PrintMessage("\n")
@@ -207,8 +214,6 @@ try:
         FreeCAD.Console.PrintMessage(
             "Startup Bridge: GUI not ready, using GuiWaiter...\n"
         )
-        from bridge_utils import GuiWaiter
-
         _gui_waiter = GuiWaiter(
             callback=_start_bridge,
             log_prefix="Startup Bridge",

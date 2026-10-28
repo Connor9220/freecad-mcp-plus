@@ -13,9 +13,10 @@
 import Draft
 import FreeCAD
 import FreeCADGui
-import guidriver.cam as cd
-from guidriver.cam.recipes import SETUP
 from PySide import QtCore
+
+from ... import cam as cd
+from . import SETUP
 
 M = cd.modal
 V = FreeCAD.Vector

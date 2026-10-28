@@ -13,16 +13,16 @@ For interactive GUI sessions, use startup_bridge.py instead (non-blocking).
 
 Usage:
     # Headless mode (no GUI features):
-    freecadcmd ~/.local/share/FreeCAD/Mod/freecad/RobustMCPBridge/\
+    freecadcmd ~/.local/share/FreeCAD/Mod/freecad/MCPPlus/\
         freecad_mcp_bridge/blocking_bridge.py
 
     # GUI mode (full features including screenshots):
-    freecad ~/.local/share/FreeCAD/Mod/freecad/RobustMCPBridge/\
+    freecad ~/.local/share/FreeCAD/Mod/freecad/MCPPlus/\
         freecad_mcp_bridge/blocking_bridge.py
 
     # On macOS:
     /Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd \
-        ~/Library/Application\ Support/FreeCAD/Mod/freecad/RobustMCPBridge/\
+        ~/Library/Application\ Support/FreeCAD/Mod/freecad/MCPPlus/\
         freecad_mcp_bridge/blocking_bridge.py
 
 Note: In headless mode (freecadcmd), GUI features like screenshots are not available.
@@ -44,29 +44,31 @@ except ImportError:
     print("ERROR: This script must be run with freecad or freecadcmd.")
     print("")
     print("Usage:")
-    print(
-        "  freecadcmd /path/to/freecad/RobustMCPBridge/freecad_mcp_bridge/blocking_bridge.py"
-    )
+    print("  freecadcmd /path/to/freecad/MCPPlus/freecad_mcp_bridge/blocking_bridge.py")
     print("")
     print("On macOS (if workbench installed):")
     print("  /Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd \\")
     print(
-        "    ~/Library/Application\\ Support/FreeCAD/Mod/freecad/RobustMCPBridge/"
+        "    ~/Library/Application\\ Support/FreeCAD/Mod/freecad/MCPPlus/"
         "freecad_mcp_bridge/blocking_bridge.py"
     )
     print("")
     print("On Linux (if workbench installed):")
     print(
-        "  freecadcmd ~/.local/share/FreeCAD/Mod/freecad/RobustMCPBridge/"
+        "  freecadcmd ~/.local/share/FreeCAD/Mod/freecad/MCPPlus/"
         "freecad_mcp_bridge/blocking_bridge.py"
     )
     sys.exit(1)
 
-# Import the plugin server directly from the module file in the same directory
-script_dir = str(Path(__file__).resolve().parent)
-sys.path.insert(0, script_dir)
-from bridge_utils import get_running_plugin  # noqa: E402
-from server import FreecadMCPPlugin  # noqa: E402
+# Import through the installed add-on (freecad.MCPPlus) so this script sees the bridge its
+# workbench may have started; from a plain checkout, load the package next to this script
+try:
+    from freecad.MCPPlus.freecad_mcp_bridge.bridge_utils import get_running_plugin
+    from freecad.MCPPlus.freecad_mcp_bridge.server import FreecadMCPPlugin
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from freecad_mcp_bridge.bridge_utils import get_running_plugin
+    from freecad_mcp_bridge.server import FreecadMCPPlugin
 
 # Check if bridge is already running (from auto-start in Init.py)
 plugin = get_running_plugin()

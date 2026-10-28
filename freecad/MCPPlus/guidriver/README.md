@@ -2,11 +2,11 @@
 
 Drive the FreeCAD GUI from Python (via the MCP+ bridge's `execute_python`, or the
 `gui_*` / `cam_gui_*` MCP tools), so objects are built through the real commands,
-task panels and dialogs -- GUI gating included. Ships inside the MCP+ add-on; FreeCAD
-puts `freecad/RobustMCPBridge/` on `sys.path`, so it imports as `guidriver`.
+task panels and dialogs -- GUI gating included. Ships inside the MCP+ add-on and imports
+as `freecad.MCPPlus.guidriver`.
 
 ```python
-import guidriver as gd; gd = gd.reload()           # reload after editing
+from freecad.MCPPlus import guidriver as gd; gd = gd.reload()   # reload after editing
 r = gd.run("PartDesign_Pad", modal=[gd.modal.message_box("OK")])   # toolbar command
 p = gd.panel()                                     # the open task panel
 p.dump(hidden=False)                               # pages -> widgets: value, tab, hidden, disabled
@@ -14,7 +14,7 @@ p.set("Length", "10 mm")
 p.ok()                                             # task view's real OK button
 gd.edit(obj)                                       # double-click equivalent
 
-import guidriver.cam as cd                         # CAM side (drop-in for the old camdriver)
+from freecad.MCPPlus.guidriver import cam as cd   # CAM side (drop-in for the old camdriver)
 r = cd.run("CAM_Adaptive", modal=[cd.modal.tc_chooser(70)])
 p = cd.panel()                                     # CamPanel = Panel + add_base()
 p.add_base([(clone, "Face19")])                    # select + Base Geometry "Add"
@@ -37,6 +37,7 @@ re-exported), `taskpanel` (`CamPanel.add_base`), `inspect` (summary/check/post/s
 replay), `recipes/twp_block.py`, `recipes/twp_block2.py`, `recipes/flat_job.py`.
 
 Recipes:
+
 - `class_tray.run(doc, copy_dressups=True, machine=None, stop_before_post=False)` on a fresh copy of
   `class-tray.FCStd`. `copy_dressups=False`: the finish pass copies only the Profile op and gets its own
   Lead In/Out. `machine="NibblerBOT"`: picks the Job machine, so posting goes through the machine post.
@@ -53,6 +54,7 @@ Ready-made CAM dialog rules: `job_create`, `tc_chooser`, `toolbit_selector`, `in
 `stock_material`, `tc_editor` (+ F&S wizard), `feeds_speeds`, `message_box`, `nibblerbot_post`.
 
 Gotchas learned:
+
 - Never `FreeCADGui.Control.closeDialog()` a CAM Job panel: it skips reject()/cleanup and leaves
   its Selection observer registered. Close it with the panel's Cancel/OK (`cd.panel().cancel()`).
 - New ops inherit the previous op's TC; only the first op shows the TC chooser.

@@ -10,7 +10,7 @@ It is bundled with the workbench addon for self-contained installation.
 
 from typing import Any
 
-__version__ = "0.6.2"  # Updated by release workflow
+__version__ = "0.7.0"
 __all__ = ["FreecadMCPPlugin", "__version__"]
 
 

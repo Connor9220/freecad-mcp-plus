@@ -13,16 +13,16 @@ from freecad_mcp.bridge.base import ExecutionResult
 from freecad_mcp.tools.gui_driver import guidriver_code
 
 ROOT = Path(__file__).parent.parent.parent
-ADDON_DIR = ROOT / "freecad" / "RobustMCPBridge"
+ADDON_DIR = ROOT / "freecad" / "MCPPlus"
 GUIDRIVER = ADDON_DIR / "guidriver"
 
 TOOLS = {
-    "gui_run_command": "guidriver.mcp",
-    "gui_panel": "guidriver.mcp",
-    "gui_edit": "guidriver.mcp",
-    "cam_gui_add_base": "guidriver.cam.mcp",
-    "cam_gui_check": "guidriver.cam.mcp",
-    "cam_gui_post": "guidriver.cam.mcp",
+    "gui_run_command": "freecad.MCPPlus.guidriver.mcp",
+    "gui_panel": "freecad.MCPPlus.guidriver.mcp",
+    "gui_edit": "freecad.MCPPlus.guidriver.mcp",
+    "cam_gui_add_base": "freecad.MCPPlus.guidriver.cam.mcp",
+    "cam_gui_check": "freecad.MCPPlus.guidriver.cam.mcp",
+    "cam_gui_post": "freecad.MCPPlus.guidriver.cam.mcp",
 }
 
 
@@ -133,14 +133,14 @@ class TestRegistration:
 class TestGeneratedCode:
     def test_code_imports_guidriver_with_clear_error(self):
         code = guidriver_code("run_command", {"command": "Part_Box"})
-        assert "import guidriver.mcp as _gd" in code
+        assert "import freecad.MCPPlus.guidriver.mcp as _gd" in code
         assert "update the MCP+ add-on" in code
         assert "_result_ = _gd.run_command(**{'command': 'Part_Box'})" in code
         compile(code, "<test>", "exec")
 
     def test_code_quotes_strings_safely(self):
         code = guidriver_code("run_command", {"command": "x'); import os; ('"})
-        _name, kwargs = _run_sent(code, "guidriver.mcp")
+        _name, kwargs = _run_sent(code, "freecad.MCPPlus.guidriver.mcp")
         assert kwargs["command"] == "x'); import os; ('"
 
     @pytest.mark.asyncio
@@ -152,7 +152,7 @@ class TestGeneratedCode:
         assert result == {"ok": True}
         code, timeout = _sent(mock_bridge)
         assert timeout == 60000
-        name, kwargs = _run_sent(code, "guidriver.mcp")
+        name, kwargs = _run_sent(code, "freecad.MCPPlus.guidriver.mcp")
         assert name == "run_command"
         assert kwargs == {
             "command": "CAM_Profile",
@@ -166,7 +166,7 @@ class TestGeneratedCode:
         await tools["gui_panel"](
             action="set", values={"stepDown": "0.25 in", "stepOver": 30}, page="Heights"
         )
-        name, kwargs = _run_sent(_sent(mock_bridge)[0], "guidriver.mcp")
+        name, kwargs = _run_sent(_sent(mock_bridge)[0], "freecad.MCPPlus.guidriver.mcp")
         assert name == "panel"
         assert kwargs["action"] == "set"
         assert kwargs["values"] == {"stepDown": "0.25 in", "stepOver": 30}
@@ -178,12 +178,12 @@ class TestGeneratedCode:
         await tools["gui_panel"](action="ok", timeout_ms=5000)
         code, timeout = _sent(mock_bridge)
         assert timeout == 5000
-        assert _run_sent(code, "guidriver.mcp")[1]["action"] == "ok"
+        assert _run_sent(code, "freecad.MCPPlus.guidriver.mcp")[1]["action"] == "ok"
 
     @pytest.mark.asyncio
     async def test_gui_edit(self, tools, mock_bridge):
         await tools["gui_edit"](object_name="Profile", doc_name="Doc")
-        name, kwargs = _run_sent(_sent(mock_bridge)[0], "guidriver.mcp")
+        name, kwargs = _run_sent(_sent(mock_bridge)[0], "freecad.MCPPlus.guidriver.mcp")
         assert name == "edit"
         assert kwargs == {"object_name": "Profile", "modal": None, "doc_name": "Doc"}
 
@@ -192,7 +192,9 @@ class TestGeneratedCode:
         await tools["cam_gui_add_base"](
             selections=[["Clone", ["Face1", "Face2"]]], clear=True
         )
-        name, kwargs = _run_sent(_sent(mock_bridge)[0], "guidriver.cam.mcp")
+        name, kwargs = _run_sent(
+            _sent(mock_bridge)[0], "freecad.MCPPlus.guidriver.cam.mcp"
+        )
         assert name == "add_base"
         assert kwargs["selections"] == [["Clone", ["Face1", "Face2"]]]
         assert kwargs["clear"] is True
@@ -200,7 +202,9 @@ class TestGeneratedCode:
     @pytest.mark.asyncio
     async def test_cam_gui_check(self, tools, mock_bridge):
         await tools["cam_gui_check"](job="Job", include_summary=True)
-        name, kwargs = _run_sent(_sent(mock_bridge)[0], "guidriver.cam.mcp")
+        name, kwargs = _run_sent(
+            _sent(mock_bridge)[0], "freecad.MCPPlus.guidriver.cam.mcp"
+        )
         assert name == "check"
         assert kwargs == {
             "job_name": "Job",
@@ -217,7 +221,7 @@ class TestGeneratedCode:
         )
         code, timeout = _sent(mock_bridge)
         assert timeout == 120000
-        name, kwargs = _run_sent(code, "guidriver.cam.mcp")
+        name, kwargs = _run_sent(code, "freecad.MCPPlus.guidriver.cam.mcp")
         assert name == "post"
         assert kwargs["deny"] == ["nibbler", "live"]
         assert kwargs["postname"] == "linuxcnc"
@@ -243,7 +247,7 @@ class TestGeneratedCode:
 
 class TestAddonPackage:
     def test_package_xml_subdirectory_holds_guidriver(self):
-        """FreeCAD puts the workbench <subdirectory> on sys.path -> `import guidriver`."""
+        """The workbench <subdirectory> holds the guidriver package."""
         ns = {"p": "https://wiki.freecad.org/Package_Metadata"}
         root = ET.parse(ROOT / "package.xml").getroot()  # noqa: S314
         sub = root.find("p:content/p:workbench/p:subdirectory", ns).text
@@ -293,12 +297,52 @@ class TestAddonPackage:
             assert cam_rule not in src
         assert "def tc_chooser" in (GUIDRIVER / "cam" / "modal.py").read_text()
 
-    def test_xmouse_not_imported_eagerly(self):
-        """xmouse opens the X display at import; the package must not import it."""
-        src = (GUIDRIVER / "__init__.py").read_text()
-        assert "xmouse" not in [
-            a.name
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, ast.ImportFrom)
-            for a in n.names
-        ]
+    @pytest.mark.parametrize(
+        "path",
+        sorted(
+            p
+            for p in GUIDRIVER.rglob("*.py")
+            if p.name not in ("xmouse.py", "xkeys_external.py")
+        ),
+        ids=lambda p: str(p.relative_to(GUIDRIVER)),
+    )
+    def test_imports_without_x11(self, path):
+        """Windows/macOS: only xmouse/xkeys_external need X11, loaded on demand.
+
+        No other guidriver module may import them or ctypes at module level.
+        """
+        for node in ast.parse(path.read_text()).body:
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""] + [a.name for a in node.names]
+            for n in names:
+                assert n.split(".")[-1] not in ("xmouse", "xkeys_external", "ctypes"), (
+                    f"{path}: imports {n} at module level"
+                )
+
+
+ADDON_OWN = {
+    p.stem if p.name != "__init__.py" else p.parent.name
+    for p in ADDON_DIR.rglob("*.py")
+} | {"Qt"}
+
+
+@pytest.mark.parametrize(
+    "path", sorted(ADDON_DIR.rglob("*.py")), ids=lambda p: str(p.relative_to(ADDON_DIR))
+)
+def test_addon_imports_itself_relatively(path):
+    """The add-on imports its own modules relatively, so none of its names
+    (commands, preferences, Qt, guidriver, ...) take over FreeCAD's namespace."""
+    if path.name in ("startup_bridge.py", "blocking_bridge.py"):
+        return  # scripts run by path; they import freecad.MCPPlus.* explicitly
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            names = [node.module]
+        else:
+            continue
+        for n in names:
+            assert n.split(".")[0] not in ADDON_OWN, f"{path}: absolute import of {n}"

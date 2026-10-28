@@ -18,7 +18,7 @@ import FreeCADGui
 # Register icons path for preferences page icon
 # This must be done at module level, before the preferences page is registered
 try:
-    from path_utils import get_icons_dir
+    from .path_utils import get_icons_dir
 
     _icons_dir = get_icons_dir()
     if _icons_dir:
@@ -29,7 +29,7 @@ except Exception as e:
 # Register preferences page with FreeCAD's Preferences dialog
 # This must be done at module level, before the workbench is registered
 try:
-    from Qt.preferences_page import MCPBridgePreferencesPage
+    from .Qt.preferences_page import MCPBridgePreferencesPage
 
     FreeCADGui.addPreferencePage(MCPBridgePreferencesPage, "MCP+")
 except Exception as e:
@@ -38,7 +38,7 @@ except Exception as e:
     )
 
 
-class FreecadRobustMCPBridgeWorkbench(FreeCADGui.Workbench):
+class MCPPlusWorkbench(FreeCADGui.Workbench):
     """MCP+ workbench for FreeCAD.
 
     Provides toolbar and menu commands to start, stop, and monitor the MCP
@@ -52,7 +52,7 @@ class FreecadRobustMCPBridgeWorkbench(FreeCADGui.Workbench):
     Example:
         The workbench is registered at import time by FreeCAD::
 
-            FreeCADGui.addWorkbench(FreecadRobustMCPBridgeWorkbench())
+            FreeCADGui.addWorkbench(MCPPlusWorkbench())
     """
 
     MenuText = "MCP+"
@@ -60,7 +60,7 @@ class FreecadRobustMCPBridgeWorkbench(FreeCADGui.Workbench):
 
     def __init__(self) -> None:
         """Initialize workbench with icon path."""
-        from path_utils import get_workbench_icon
+        from .path_utils import get_workbench_icon
 
         self.Icon = get_workbench_icon()
 
@@ -68,7 +68,7 @@ class FreecadRobustMCPBridgeWorkbench(FreeCADGui.Workbench):
         """Initialize the workbench - called once when first activated."""
         # Import commands module here (not at top level) to ensure
         # it's available during FreeCAD's module loading process
-        from commands import (
+        from .commands import (
             MCPBridgePreferencesCommand,
             MCPBridgeStatusCommand,
             StartMCPBridgeCommand,
@@ -76,53 +76,53 @@ class FreecadRobustMCPBridgeWorkbench(FreeCADGui.Workbench):
         )
 
         # Register commands
-        FreeCADGui.addCommand("Start_MCP_Bridge", StartMCPBridgeCommand())
-        FreeCADGui.addCommand("Stop_MCP_Bridge", StopMCPBridgeCommand())
-        FreeCADGui.addCommand("MCP_Bridge_Status", MCPBridgeStatusCommand())
-        FreeCADGui.addCommand("MCP_Bridge_Preferences", MCPBridgePreferencesCommand())
+        FreeCADGui.addCommand("MCPPlus_StartBridge", StartMCPBridgeCommand())
+        FreeCADGui.addCommand("MCPPlus_StopBridge", StopMCPBridgeCommand())
+        FreeCADGui.addCommand("MCPPlus_BridgeStatus", MCPBridgeStatusCommand())
+        FreeCADGui.addCommand("MCPPlus_Preferences", MCPBridgePreferencesCommand())
 
         # Create toolbar with main commands
         toolbar_commands = [
-            "Start_MCP_Bridge",
-            "Stop_MCP_Bridge",
-            "MCP_Bridge_Status",
+            "MCPPlus_StartBridge",
+            "MCPPlus_StopBridge",
+            "MCPPlus_BridgeStatus",
         ]
         self.appendToolbar("MCP+", toolbar_commands)
 
         # Create menu with all commands including preferences
         menu_commands = [
-            "Start_MCP_Bridge",
-            "Stop_MCP_Bridge",
-            "MCP_Bridge_Status",
+            "MCPPlus_StartBridge",
+            "MCPPlus_StopBridge",
+            "MCPPlus_BridgeStatus",
             "Separator",
-            "MCP_Bridge_Preferences",
+            "MCPPlus_Preferences",
         ]
         self.appendMenu("MCP+", menu_commands)
 
-        FreeCAD.Console.PrintMessage("MCP+ workbench initialized\n")
+        FreeCAD.Console.PrintLog("MCP+ workbench initialized\n")
 
         # Auto-start bridge if preference is enabled
         # This is a fallback if the module-level timer didn't fire
         # (which can happen if the module isn't loaded until workbench selection)
         try:
-            from preferences import get_auto_start
+            from .preferences import get_auto_start
 
             if get_auto_start():
                 # Check if already running (timer might have started it)
-                from commands import is_bridge_running
+                from .commands import is_bridge_running
 
                 if not is_bridge_running():
                     FreeCAD.Console.PrintMessage(
                         "Auto-starting MCP+ Bridge (configured in preferences)...\n"
                     )
-                    FreeCADGui.runCommand("Start_MCP_Bridge")
+                    FreeCADGui.runCommand("MCPPlus_StartBridge")
         except Exception as e:
             FreeCAD.Console.PrintWarning(f"Could not auto-start MCP+ Bridge: {e}\n")
 
         # Sync status bar widget with current bridge state
         # (bridge may have been started by Init.py before workbench was selected)
         try:
-            from Qt.status_widget import sync_status_with_bridge
+            from .Qt.status_widget import sync_status_with_bridge
 
             sync_status_with_bridge()
         except Exception as e:
@@ -132,7 +132,7 @@ class FreecadRobustMCPBridgeWorkbench(FreeCADGui.Workbench):
         """Called when the workbench is activated."""
         # Sync status bar widget with current bridge state
         try:
-            from Qt.status_widget import sync_status_with_bridge
+            from .Qt.status_widget import sync_status_with_bridge
 
             sync_status_with_bridge()
         except Exception as e:
@@ -148,7 +148,7 @@ class FreecadRobustMCPBridgeWorkbench(FreeCADGui.Workbench):
 
 
 # Register the workbench
-FreeCADGui.addWorkbench(FreecadRobustMCPBridgeWorkbench())
+FreeCADGui.addWorkbench(MCPPlusWorkbench())
 
 # Schedule status bar sync after a short delay to allow GUI to finish initializing
 # This runs on the main thread (InitGui.py is executed on main thread)
@@ -158,14 +158,12 @@ try:
     def _deferred_status_bar_sync() -> None:
         """Sync status bar with bridge state after GUI is ready."""
         try:
-            from commands import is_bridge_running
-            from preferences import get_status_bar_enabled
-            from Qt.status_widget import sync_status_with_bridge
+            from .commands import is_bridge_running
+            from .preferences import get_status_bar_enabled
+            from .Qt.status_widget import sync_status_with_bridge
 
             if get_status_bar_enabled() and is_bridge_running():
-                FreeCAD.Console.PrintMessage(
-                    "MCP+: Syncing status bar from InitGui...\n"
-                )
+                FreeCAD.Console.PrintLog("MCP+: Syncing status bar from InitGui...\n")
                 sync_status_with_bridge()
         except Exception as e:
             FreeCAD.Console.PrintWarning(
@@ -174,7 +172,7 @@ try:
 
     # Use QTimer.singleShot on the main thread - this should work
     QtCore.QTimer.singleShot(2000, _deferred_status_bar_sync)
-    FreeCAD.Console.PrintMessage("MCP+: Status bar sync scheduled from InitGui (2s)\n")
+    FreeCAD.Console.PrintLog("MCP+: Status bar sync scheduled from InitGui (2s)\n")
 
     # Auto-start the MCP bridge if configured in preferences
     # This runs at FreeCAD GUI startup (InitGui.py module-level code)
@@ -210,22 +208,22 @@ try:
             # Safety check: verify GUI is actually ready before starting
             # If not ready, reschedule for another attempt
             if not FreeCAD.GuiUp:
-                FreeCAD.Console.PrintMessage(
+                FreeCAD.Console.PrintLog(
                     "MCP+: GUI not ready, rescheduling auto-start...\n"
                 )
                 QtCore.QTimer.singleShot(500, _auto_start_bridge)
                 return
 
-            from preferences import get_auto_start
+            from .preferences import get_auto_start
 
             if not get_auto_start():
                 return
 
             # Check if bridge is already running
-            from commands import is_bridge_running
+            from .commands import is_bridge_running
 
             if is_bridge_running():
-                FreeCAD.Console.PrintMessage(
+                FreeCAD.Console.PrintLog(
                     "MCP+: Bridge already running, skipping auto-start\n"
                 )
                 return
@@ -233,9 +231,9 @@ try:
             FreeCAD.Console.PrintMessage("MCP+: Auto-starting from InitGui...\n")
 
             # Import and start the bridge
-            from freecad_mcp_bridge.bridge_utils import register_mcp_plugin
-            from freecad_mcp_bridge.server import FreecadMCPPlugin
-            from preferences import get_socket_port, get_xmlrpc_port
+            from .freecad_mcp_bridge.bridge_utils import register_mcp_plugin
+            from .freecad_mcp_bridge.server import FreecadMCPPlugin
+            from .preferences import get_socket_port, get_xmlrpc_port
 
             xmlrpc_port = get_xmlrpc_port()
             socket_port = get_socket_port()
@@ -252,7 +250,7 @@ try:
 
             # Sync status bar now that bridge is running
             try:
-                from Qt.status_widget import sync_status_with_bridge
+                from .Qt.status_widget import sync_status_with_bridge
 
                 sync_status_with_bridge()
             except Exception as status_err:
@@ -272,12 +270,10 @@ try:
     # which can cause port conflicts or duplicate initialisation.
     import os
 
-    from preferences import get_auto_start
+    from .preferences import get_auto_start
 
     if os.environ.get("FREECAD_MCP_TESTING"):
-        FreeCAD.Console.PrintMessage(
-            "MCP+: Auto-start skipped (FREECAD_MCP_TESTING set)\n"
-        )
+        FreeCAD.Console.PrintLog("MCP+: Auto-start skipped (FREECAD_MCP_TESTING set)\n")
     elif get_auto_start():
         # Schedule auto-start after a delay to ensure GUI is fully ready.
         # InitGui.py module-level code runs early in FreeCAD startup, so we
@@ -285,8 +281,8 @@ try:
         # Note: We use a simple QTimer.singleShot() here because GuiWaiter
         # has timing issues when used from module-level code during startup.
         QtCore.QTimer.singleShot(3000, _auto_start_bridge)
-        FreeCAD.Console.PrintMessage("MCP+: Auto-start scheduled from InitGui (3s)\n")
+        FreeCAD.Console.PrintLog("MCP+: Auto-start scheduled from InitGui (3s)\n")
     else:
-        FreeCAD.Console.PrintMessage("MCP+: Auto-start disabled in preferences\n")
+        FreeCAD.Console.PrintLog("MCP+: Auto-start disabled in preferences\n")
 except Exception as e:
     FreeCAD.Console.PrintWarning(f"MCP+: Could not schedule status bar sync: {e}\n")

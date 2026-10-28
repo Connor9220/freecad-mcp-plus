@@ -786,7 +786,7 @@ project-root/
 │   │   └── test.yaml             # Unit/integration tests
 │   └── dependabot.yaml       # Dependency updates
 ├── freecad/                  # FreeCAD addon namespace package
-│   └── RobustMCPBridge/      # Robust MCP Bridge workbench
+│   └── MCPPlus/      # Robust MCP Bridge workbench
 │       ├── Qt/               # Qt/PySide UI components
 │       │   ├── status_widget.py      # Status bar widget
 │       │   └── preferences_page.py   # Preferences dialog
@@ -1195,8 +1195,8 @@ An integration test in `tests/integration/test_thread_safety.py` verifies that:
 
 | File                                               | Purpose                                          |
 | -------------------------------------------------- | ------------------------------------------------ |
-| `freecad/RobustMCPBridge/init_gui.py`              | Auto-start at FreeCAD GUI startup (if enabled)   |
-| `freecad/RobustMCPBridge/__init__.py`              | Fallback auto-start when workbench selected      |
+| `freecad/MCPPlus/init_gui.py`              | Auto-start at FreeCAD GUI startup (if enabled)   |
+| `freecad/MCPPlus/__init__.py`              | Fallback auto-start when workbench selected      |
 | `freecad/.../freecad_mcp_bridge/startup_bridge.py` | Manual start via `just freecad::run-gui`         |
 
 **When modifying startup logic in one file, you MUST update the others to match.**
@@ -1615,7 +1615,7 @@ Each component has its own `RELEASE_NOTES.md` file. Release workflows automatica
 | Component         | Release Notes File                             |
 | ----------------- | ---------------------------------------------- |
 | MCP Server        | `src/freecad_mcp/RELEASE_NOTES.md`             |
-| Robust MCP Bridge | `freecad/RobustMCPBridge/RELEASE_NOTES.md`     |
+| Robust MCP Bridge | `freecad/MCPPlus/RELEASE_NOTES.md`     |
 
 **Before releasing a component:**
 
@@ -1765,7 +1765,7 @@ Each component has its own `RELEASE_NOTES.md` file that is updated before releas
 | Component         | File                                           |
 | ----------------- | ---------------------------------------------- |
 | MCP Server        | `src/freecad_mcp/RELEASE_NOTES.md`             |
-| Robust MCP Bridge | `freecad/RobustMCPBridge/RELEASE_NOTES.md`     |
+| Robust MCP Bridge | `freecad/MCPPlus/RELEASE_NOTES.md`     |
 
 ---
 

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
 
-    from server import FreecadMCPPlugin
+    from .server import FreecadMCPPlugin
 
 # Default timing constants for GUI waiting
 DEFAULT_GUI_CHECK_INTERVAL_MS: int = 100  # How often to check if GUI is ready
@@ -211,7 +211,7 @@ def register_mcp_plugin(
         be visible to the workbench UI.
     """
     try:
-        import commands
+        from .. import commands
 
         commands._mcp_plugin = plugin
         commands._running_config = {
@@ -245,7 +245,7 @@ def get_running_plugin() -> FreecadMCPPlugin | None:
 
     try:
         # Check if the workbench commands module has a running plugin
-        import commands
+        from .. import commands
 
         plugin = getattr(commands, "_mcp_plugin", None)
         if plugin is not None and plugin.is_running:

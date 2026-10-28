@@ -15,17 +15,12 @@ must run on the main thread.
 
 from __future__ import annotations
 
-# Import FreeCAD first so we can log early
+from typing import TYPE_CHECKING, Any
+
 import FreeCAD
 
-FreeCAD.Console.PrintMessage("MCP+: Init.py loaded\n")
-
-from typing import TYPE_CHECKING, Any  # noqa: E402
-
 if TYPE_CHECKING:
-    from freecad_mcp_bridge.bridge_utils import GuiWaiter
-
-FreeCAD.Console.PrintMessage("MCP+: Init loaded\n")
+    from .freecad_mcp_bridge.bridge_utils import GuiWaiter
 
 # Global reference to GuiWaiter and auto-start timer to prevent garbage collection
 # Type annotations use Any for timer since it could be QTimer from PySide2 or PySide6
@@ -62,13 +57,13 @@ def _auto_start_bridge() -> None:
             QtCore.QTimer.singleShot(1000, _auto_start_bridge)
     """
     try:
-        from preferences import get_auto_start
+        from .preferences import get_auto_start
 
         if not get_auto_start():
             return
 
         # Check if bridge is already running
-        from commands import _mcp_plugin
+        from .commands import _mcp_plugin
 
         if _mcp_plugin is not None and _mcp_plugin.is_running:
             return
@@ -78,8 +73,8 @@ def _auto_start_bridge() -> None:
         )
 
         # Import and start the bridge directly
-        from freecad_mcp_bridge.server import FreecadMCPPlugin
-        from preferences import get_socket_port, get_xmlrpc_port
+        from .freecad_mcp_bridge.server import FreecadMCPPlugin
+        from .preferences import get_socket_port, get_xmlrpc_port
 
         xmlrpc_port = get_xmlrpc_port()
         socket_port = get_socket_port()
@@ -92,7 +87,7 @@ def _auto_start_bridge() -> None:
         plugin.start()
 
         # Register plugin with commands module for restart detection
-        from freecad_mcp_bridge.bridge_utils import register_mcp_plugin
+        from .freecad_mcp_bridge.bridge_utils import register_mcp_plugin
 
         register_mcp_plugin(plugin, xmlrpc_port, socket_port)
 
@@ -132,18 +127,16 @@ def _auto_start_bridge() -> None:
 try:
     import os
 
-    from preferences import get_auto_start
+    from .preferences import get_auto_start
 
     # In testing mode, skip auto-start so the test controls bridge lifecycle
     # via startup_bridge.py (same guard as in init_gui.py).
     if os.environ.get("FREECAD_MCP_TESTING"):
         _autoStartEnabled = False
-        FreeCAD.Console.PrintMessage(
-            "MCP+: Auto-start skipped (FREECAD_MCP_TESTING set)\n"
-        )
+        FreeCAD.Console.PrintLog("MCP+: Auto-start skipped (FREECAD_MCP_TESTING set)\n")
     else:
         _autoStartEnabled = get_auto_start()
-    FreeCAD.Console.PrintMessage(f"MCP+: Auto-start preference = {_autoStartEnabled}\n")
+    FreeCAD.Console.PrintLog(f"MCP+: Auto-start preference = {_autoStartEnabled}\n")
 
     if _autoStartEnabled:
         # Try to import Qt and check for running QApplication
@@ -177,7 +170,7 @@ try:
 
         # FreeCAD 1.1 doesn't define GuiUp yet while Init.py files run
         _gui_up = bool(getattr(FreeCAD, "GuiUp", False))
-        FreeCAD.Console.PrintMessage(
+        FreeCAD.Console.PrintLog(
             f"MCP+: GuiUp={_gui_up}, "
             f"QtCore={'available' if QtCore else 'unavailable'}, "
             f"QApp={'running' if _has_qapp else 'none'}, "
@@ -186,7 +179,7 @@ try:
 
         if _gui_up:
             # GUI is already up - use timer for deferred start
-            FreeCAD.Console.PrintMessage(
+            FreeCAD.Console.PrintLog(
                 "MCP+: GUI already up, scheduling deferred start...\n"
             )
             if QtCore is not None:
@@ -200,7 +193,7 @@ try:
         elif _is_true_headless:
             # True headless mode - QCoreApplication exists but not QApplication
             # No Qt event loop for GUI, so start bridge directly with background thread
-            FreeCAD.Console.PrintMessage(
+            FreeCAD.Console.PrintLog(
                 "MCP+: True headless mode (QCoreApplication only), "
                 "starting directly...\n"
             )
@@ -209,8 +202,8 @@ try:
             # GUI not ready yet (either QApplication exists or no app yet)
             # Use GuiWaiter to wait for GuiUp to become True before starting
             # This ensures the bridge uses Qt timer (not background thread) for queue
-            FreeCAD.Console.PrintMessage("MCP+: GUI not ready, using GuiWaiter...\n")
-            from freecad_mcp_bridge.bridge_utils import GuiWaiter
+            FreeCAD.Console.PrintLog("MCP+: GUI not ready, using GuiWaiter...\n")
+            from .freecad_mcp_bridge.bridge_utils import GuiWaiter
 
             _gui_waiter = GuiWaiter(
                 callback=_auto_start_bridge,
@@ -223,9 +216,7 @@ try:
             _gui_waiter.start()
         else:
             # No Qt available at all - unusual state, start directly
-            FreeCAD.Console.PrintMessage(
-                "MCP+: No Qt available, starting directly...\n"
-            )
+            FreeCAD.Console.PrintLog("MCP+: No Qt available, starting directly...\n")
             _auto_start_bridge()
 except Exception as e:
     FreeCAD.Console.PrintWarning(f"Could not set up auto-start: {e}\n")
