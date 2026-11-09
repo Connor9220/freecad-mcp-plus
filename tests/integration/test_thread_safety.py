@@ -27,6 +27,8 @@ from typing import Any
 
 import pytest
 
+from freecad_mcp.bridge.xmlrpc import signed_proxy
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +40,7 @@ def _check_gui_available() -> bool:
     and indicate GUI unavailability.
     """
     try:
-        proxy = xmlrpc.client.ServerProxy("http://localhost:9875", allow_none=True)
+        proxy = signed_proxy("localhost", 9875)
         result: dict[str, Any] = proxy.execute(  # type: ignore[assignment]
             """
 import FreeCAD

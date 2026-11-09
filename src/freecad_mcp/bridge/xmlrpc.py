@@ -24,12 +24,15 @@ Attribution:
 """
 
 import asyncio
+import http.client
+import ssl
 import time
 import xmlrpc.client
 from typing import Any
 
-from freecad_mcp.bridge.auth import current_token, token_file
+from freecad_mcp.bridge.auth import required_token, tls_context_for, token_file
 from freecad_mcp.bridge.base import (
+    APPROVAL_WAIT_S,
     ConnectionStatus,
     DocumentInfo,
     ExecutionResult,
@@ -40,6 +43,11 @@ from freecad_mcp.bridge.base import (
     ViewAngle,
     WorkbenchInfo,
 )
+from freecad_mcp.bridge.wire import (
+    require_psk_handshake,
+    response_ok,
+    sign_request,
+)
 
 DEFAULT_XMLRPC_HOST = "localhost"
 DEFAULT_XMLRPC_PORT = 9875
@@ -49,17 +57,71 @@ DEFAULT_TIMEOUT = 30.0
 RESPONSE_MARGIN_S = 15.0
 
 
-class _TokenTransport(xmlrpc.client.Transport):
-    """Transport that presents the bridge's auth token on every request."""
+class _SignedTransport(xmlrpc.client.Transport):
+    """Signs every request with the token and checks the bridge signed its answer.
 
-    def __init__(self, token: str) -> None:
+    With a TLS-PSK context (a bridge on another computer) the connection is encrypted too.
+    """
+
+    # The answer is signed as sent: no gzip
+    accept_gzip_encoding = False
+
+    def __init__(self, token: str, tls_context: ssl.SSLContext | None = None) -> None:
         super().__init__()
         self._token = token
+        self._tls_context = tls_context
+        self._auth: dict[str, str] = {}
+
+    def make_connection(self, host: Any) -> http.client.HTTPConnection:
+        """A plain connection, or TLS-PSK when the transport has a context."""
+        if self._tls_context is None:
+            return super().make_connection(host)
+        if self._connection and self._connection[1] and host == self._connection[0]:
+            return self._connection[1]
+        chost, self._extra_headers, _x509 = self.get_host_info(host)
+        connection = http.client.HTTPSConnection(chost, context=self._tls_context)
+        self._connection = host, connection
+        return connection
+
+    def send_request(
+        self, host: Any, handler: str, request_body: Any, debug: bool
+    ) -> http.client.HTTPConnection:
+        """Sign the request body before sending it."""
+        self._auth = sign_request(self._token, request_body)
+        return super().send_request(host, handler, request_body, debug)
 
     def send_headers(self, connection: Any, headers: Any) -> None:
-        """Add the token header to the request."""
+        """Add the signature headers."""
         super().send_headers(connection, headers)
-        connection.putheader("X-MCP-Token", self._token)
+        connection.putheader("X-MCP-Time", self._auth["ts"])
+        connection.putheader("X-MCP-Nonce", self._auth["nonce"])
+        connection.putheader("X-MCP-Sig", self._auth["sig"])
+
+    def parse_response(self, response: Any) -> Any:
+        """Parse the answer, once its signature shows it came from the bridge."""
+        body = response.read()
+        if self._tls_context is not None:
+            require_psk_handshake(getattr(self._connection[1], "sock", None))
+        if not response_ok(
+            self._token, self._auth["nonce"], body, response.getheader("X-MCP-Sig")
+        ):
+            msg = "FreeCAD's answer isn't signed with the MCP+ token (wrong token, or not MCP+)"
+            raise ConnectionError(msg)
+        parser, unmarshaller = self.getparser()
+        parser.feed(body)
+        parser.close()
+        return unmarshaller.close()
+
+
+def signed_proxy(
+    host: str = "localhost", port: int = 9875, token: str | None = None
+) -> xmlrpc.client.ServerProxy:
+    """An XML-RPC proxy to a bridge that signs its calls (and uses TLS-PSK off this computer)."""
+    token = required_token(token)
+    transport = _SignedTransport(token, tls_context_for(host, token))
+    return xmlrpc.client.ServerProxy(
+        f"http://{host}:{port}", allow_none=True, transport=transport
+    )
 
 
 class XmlRpcBridge(FreecadBridge):
@@ -107,11 +169,7 @@ class XmlRpcBridge(FreecadBridge):
 
         The token is looked up per call, so one the bridge recreated is picked up.
         """
-        token = current_token(self._auth_token)
-        transport = _TokenTransport(token) if token else None
-        return xmlrpc.client.ServerProxy(
-            self._server_url, allow_none=True, transport=transport
-        )
+        return signed_proxy(self._host, self._port, self._auth_token)
 
     async def connect(self) -> None:
         """Establish connection to FreeCAD XML-RPC server.
@@ -398,6 +456,20 @@ The MCP+ bridge in FreeCAD is not running. To fix this:
         loop = asyncio.get_event_loop()
         return await asyncio.wait_for(
             loop.run_in_executor(None, proxy.status), timeout=self._timeout
+        )
+
+    async def request_approval(
+        self, tool: str, code: str, detail: str = ""
+    ) -> dict[str, Any]:
+        """Ask the user in FreeCAD whether the AI's ``code`` may run (see the base class)."""
+        if self._proxy is None:
+            msg = "Not connected to XML-RPC server"
+            raise ConnectionError(msg)
+        proxy = self._new_proxy()
+        loop = asyncio.get_event_loop()
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: proxy.approve(tool, code, detail)),
+            timeout=APPROVAL_WAIT_S,
         )
 
     # =========================================================================
@@ -818,8 +890,10 @@ elif view_type_str == "Left":
 elif view_type_str == "Right":
     view.viewRight()
 
-# Save to temp file and read
-with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+# Save to a scratch file in the add-on's private folder (on FreeCAD's computer) and read it
+from freecad.MCPPlus.freecad_mcp_bridge.wire import work_dir
+
+with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=work_dir()) as f:
     temp_path = f.name
 
 view.saveImage(temp_path, {width}, {height}, "Current")
@@ -953,50 +1027,6 @@ _result_ = macros
         if result.success and result.result:
             return [MacroInfo(**m) for m in result.result]
         return []
-
-    async def run_macro(
-        self,
-        macro_name: str,
-        args: dict[str, Any] | None = None,
-    ) -> ExecutionResult:
-        """Run a macro by name."""
-        args = args or {}
-        code = f"""
-import os
-
-# Find macro file
-macro_name = {macro_name!r}
-macro_file = None
-
-# Check user macros first
-user_path = FreeCAD.getUserMacroDir(True)
-user_macro = os.path.join(user_path, macro_name + ".FCMacro")
-if os.path.exists(user_macro):
-    macro_file = user_macro
-
-# Check system macros
-if not macro_file:
-    system_path = FreeCAD.getResourceDir() + "Macro"
-    system_macro = os.path.join(system_path, macro_name + ".FCMacro")
-    if os.path.exists(system_macro):
-        macro_file = system_macro
-
-if not macro_file:
-    raise FileNotFoundError(f"Macro not found: {{macro_name}}")
-
-# Set up arguments
-args = {args!r}
-for k, v in args.items():
-    exec(f"{{k}} = {{v!r}}")
-
-# Execute macro
-with open(macro_file, "r") as f:
-    macro_code = f.read()
-
-exec(macro_code)
-_result_ = True
-"""
-        return await self.execute_python(code)
 
     async def create_macro(
         self,

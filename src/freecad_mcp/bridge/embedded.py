@@ -23,6 +23,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
+from freecad_mcp.bridge import undo
 from freecad_mcp.bridge.base import (
     ConnectionStatus,
     DocumentInfo,
@@ -34,6 +35,10 @@ from freecad_mcp.bridge.base import (
     ViewAngle,
     WorkbenchInfo,
 )
+from freecad_mcp.bridge.wire import work_dir
+
+# The MCP+ add-on's preferences, which hold its "run the AI's code headless" setting
+_MCPPLUS_PARAMS = "User parameter:BaseApp/Preferences/Mod/MCPPlus"
 
 
 class EmbeddedBridge(FreecadBridge):
@@ -92,6 +97,15 @@ class EmbeddedBridge(FreecadBridge):
     async def is_connected(self) -> bool:
         """Check if FreeCAD is imported and available."""
         return self._connected and self._fc_module is not None
+
+    async def request_approval(
+        self, tool: str, code: str, detail: str = ""
+    ) -> dict[str, Any]:
+        """Headless FreeCAD in this process: allowed only by the add-on's headless setting."""
+        params = self._fc_module.ParamGet(_MCPPLUS_PARAMS) if self._fc_module else None
+        if params is not None and params.GetBool("RunCodeHeadless", False):
+            return {"decision": "allow", "scope": "headless"}
+        return {"decision": "headless_off"}
 
     async def execute_python(
         self,
@@ -167,10 +181,15 @@ class EmbeddedBridge(FreecadBridge):
         except ImportError:
             pass
 
+        undo_docs = undo.open_step(self._fc_module)
         try:
             with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
                 compiled = compile(code, "<mcp>", "exec")
-                exec(compiled, exec_globals)  # noqa: S102
+                try:
+                    exec(compiled, exec_globals)  # noqa: S102
+                finally:
+                    # Also after a failure, so the run's partial changes undo in one step
+                    undo.close_step(self._fc_module, undo_docs)
 
             elapsed = (time.perf_counter() - start) * 1000
 
@@ -769,7 +788,7 @@ elif view_type == "Right":
     view.viewRight()
 
 # Save to temp file and read
-with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir={str(work_dir())!r}) as f:
     temp_path = f.name
 
 view.saveImage(temp_path, {width}, {height}, "Current")
@@ -905,51 +924,6 @@ _result_ = True
             )
 
         return macros
-
-    async def run_macro(
-        self,
-        macro_name: str,
-        args: dict[str, Any] | None = None,
-    ) -> ExecutionResult:
-        """Run a macro by name.
-
-        Args:
-            macro_name: Macro name (without .FCMacro extension).
-            args: Arguments to pass to the macro.
-
-        Returns:
-            ExecutionResult from macro execution.
-        """
-        macro_path = self._get_macro_path() / f"{macro_name}.FCMacro"
-
-        if not macro_path.exists():
-            return ExecutionResult(
-                success=False,
-                result=None,
-                stdout="",
-                stderr=f"Macro not found: {macro_name}",
-                execution_time_ms=0,
-                error_type="FileNotFoundError",
-            )
-
-        try:
-            macro_code = macro_path.read_text()
-        except Exception as e:
-            return ExecutionResult(
-                success=False,
-                result=None,
-                stdout="",
-                stderr=f"Failed to read macro: {e}",
-                execution_time_ms=0,
-                error_type=type(e).__name__,
-            )
-
-        # Prepend argument setup if provided
-        if args:
-            args_setup = "\n".join(f"{k} = {v!r}" for k, v in args.items())
-            macro_code = args_setup + "\n" + macro_code
-
-        return await self.execute_python(macro_code)
 
     async def create_macro(
         self,

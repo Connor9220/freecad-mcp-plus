@@ -19,6 +19,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+# Longest a server waits for the user to answer FreeCAD's approval dialog: the bridge waits up
+# to twice the dialog's own 600 s timeout, plus a margin
+APPROVAL_WAIT_S = 1215.0
+
 
 class ViewAngle(str, Enum):
     """Standard view angles for screenshots."""
@@ -339,6 +343,17 @@ class FreecadBridge(ABC):
         msg = "Bridge status needs the XML-RPC or socket bridge"
         raise NotImplementedError(msg)
 
+    async def request_approval(
+        self, tool: str, code: str, detail: str = ""
+    ) -> dict[str, Any]:
+        """Ask the user in FreeCAD whether the AI's ``code`` may run.
+
+        Returns ``{"decision": "allow"|"deny"|"headless_off", ...}``; "headless_off" when
+        FreeCAD runs headless and the user hasn't allowed the AI's code there (this base
+        version: always).
+        """
+        return {"decision": "headless_off"}
+
     # =========================================================================
     # Document Management
     # =========================================================================
@@ -553,22 +568,6 @@ class FreecadBridge(ABC):
 
         Returns:
             List of MacroInfo for each macro.
-        """
-
-    @abstractmethod
-    async def run_macro(
-        self,
-        macro_name: str,
-        args: dict[str, Any] | None = None,
-    ) -> ExecutionResult:
-        """Run a macro by name.
-
-        Args:
-            macro_name: Macro name (without .FCMacro extension).
-            args: Arguments to pass to the macro.
-
-        Returns:
-            ExecutionResult from macro execution.
         """
 
     @abstractmethod

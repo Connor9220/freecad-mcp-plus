@@ -78,3 +78,35 @@ def mock_object_info():
 def _isolated_token_file(tmp_path, monkeypatch):
     """Keep the bridge's auth token file out of the real config folder during tests."""
     monkeypatch.setenv("FREECAD_MCP_TOKEN_FILE", str(tmp_path / "mcp-plus-token"))
+
+
+# The tool modules that ask the user before running the AI's code
+ASKING_TOOLS = ("cam", "cam_demo", "cam_headless", "execution", "macros", "validation")
+
+
+@pytest.fixture(autouse=True)
+def _run_code_without_asking(monkeypatch):
+    """Tool tests run the AI's code without the approval question (approval tests ask)."""
+
+    async def allow(*_args, **_kwargs):
+        return None
+
+    for name in ASKING_TOOLS:
+        monkeypatch.setattr(f"freecad_mcp.tools.{name}.require_approval", allow)
+
+
+@pytest.fixture
+def ask_before_running(monkeypatch):
+    """The tools ask the user again (undoes _run_code_without_asking)."""
+    from freecad_mcp.tools.approval import require_approval
+
+    for name in ASKING_TOOLS:
+        monkeypatch.setattr(
+            f"freecad_mcp.tools.{name}.require_approval", require_approval
+        )
+
+
+@pytest.fixture(autouse=True)
+def _private_work_dir(monkeypatch, tmp_path):
+    """Files written for the AI go to a test folder, not the user's cache."""
+    monkeypatch.setenv("FREECAD_MCP_WORK_DIR", str(tmp_path / "mcp-plus-work"))

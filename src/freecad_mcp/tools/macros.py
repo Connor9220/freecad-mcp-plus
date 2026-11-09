@@ -14,6 +14,9 @@ macro-centric workflow with templates and validation.
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from freecad_mcp.tools.approval import require_approval
+from freecad_mcp.tools.execution import RUN_FILE_CODE
+
 
 def register_macro_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> None:
     """Register macro-related tools with the Robust MCP Server.
@@ -53,6 +56,8 @@ def register_macro_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> 
     ) -> dict[str, Any]:
         """Run a FreeCAD macro by name.
 
+        FreeCAD shows the macro's code to the user, who approves it before it runs.
+
         Args:
             macro_name: Name of the macro to run (without .FCMacro extension).
             args: Optional dictionary of arguments to pass to the macro.
@@ -67,8 +72,19 @@ def register_macro_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> 
                 - error_type: Error type if failed
                 - error_traceback: Full traceback if failed
         """
+        args = args or {}
+        bad = [key for key in args if not str(key).isidentifier()]
+        if bad:
+            msg = f"Macro argument names must be Python identifiers: {bad}"
+            raise ValueError(msg)
+        found = await read_macro(macro_name)
+        path, source = found["path"], found["code"]
+        detail = f"Macro: {path}" + (f"\nArguments: {args!r}" if args else "")
+        await require_approval(get_bridge, "run_macro", source, detail)
         bridge = await get_bridge()
-        result = await bridge.run_macro(macro_name, args)
+        result = await bridge.execute_python(
+            RUN_FILE_CODE.format(path=path, source=source, args=args)
+        )
         return {
             "success": result.success,
             "stdout": result.stdout,

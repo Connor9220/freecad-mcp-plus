@@ -26,12 +26,15 @@ import asyncio
 import atexit
 import contextlib
 import errno
-import hmac
 import json
 import os
 import queue
 import re
+import select
+import signal
+import socket
 import socketserver
+import ssl
 import sys
 import threading
 import time
@@ -41,9 +44,13 @@ import weakref
 import xmlrpc.server
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from . import approval, undo, wire
 from .auth import load_or_create_token, read_token, token_file
 from .jobs import (
     DEFAULT_PAGE_CHARS,
@@ -52,13 +59,15 @@ from .jobs import (
     JobRegistry,
     JobStream,
 )
+from .wire import work_dir
 
 # Longest execution an XML-RPC caller may ask for
 MAX_EXECUTE_TIMEOUT_MS = 1_800_000
 # Longest a single get_output_page call waits for output
 MAX_PAGE_WAIT_MS = 60_000
-# Bumped when the bridge gains calls the MCP server relies on (2: jobs, status, auth)
-BRIDGE_PROTOCOL = 2
+# Bumped when the bridge gains calls the MCP server relies on (2: jobs, status, auth;
+# 3: approve)
+BRIDGE_PROTOCOL = 3
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/MCPPlus"
 
@@ -180,26 +189,97 @@ def _addon_version() -> str | None:
     return None
 
 
-def _connection_preferences() -> tuple[str, str, bool]:
-    """Bind host, explicit auth token and whether a token is required.
+def listen_hosts(setting: str) -> tuple[list[str], list[str]]:
+    """The addresses in ``setting`` (comma separated) the bridge may listen on, and why not the rest.
 
-    From the environment (``FREECAD_MCP_BIND_HOST``, ``FREECAD_MCP_AUTH_TOKEN``,
-    ``FREECAD_MCP_REQUIRE_AUTH``) or FreeCAD's preferences (``BindHost``, ``AuthToken``,
-    ``RequireAuth``, default on).
+    This computer's own (localhost), and at most one other, never every address at once,
+    and only with TLS-PSK; localhost when none is left.
+    """
+    hosts: list[str] = []
+    refused: list[str] = []
+    for host in dict.fromkeys(h.strip() for h in setting.split(",") if h.strip()):
+        if wire.is_loopback(host):
+            hosts.append(host)
+        elif wire.is_wildcard(host):
+            refused.append(f"listening on every address at once ({host}) isn't allowed")
+        elif not wire.psk_available():
+            # Off this computer the connection must be encrypted (TLS-PSK, Python 3.13+)
+            refused.append(
+                f"listening on {host} needs FreeCAD with Python 3.13 or newer"
+            )
+        elif any(not wire.is_loopback(h) for h in hosts):
+            refused.append(
+                f"listening on {host} too isn't allowed: one address besides localhost"
+            )
+        else:
+            hosts.append(host)
+    return hosts or ["localhost"], refused
+
+
+def _connection_preferences() -> tuple[str, str]:
+    """Bind host and explicit auth token.
+
+    From the environment (``FREECAD_MCP_BIND_HOST``, ``FREECAD_MCP_AUTH_TOKEN``) or FreeCAD's
+    preferences (``BindHost``, ``AuthToken``).
     """
     host = os.environ.get("FREECAD_MCP_BIND_HOST", "")
     token = os.environ.get("FREECAD_MCP_AUTH_TOKEN", "")
-    require = os.environ.get("FREECAD_MCP_REQUIRE_AUTH", "")
     if FREECAD_AVAILABLE:
         params = FreeCAD.ParamGet(PARAM_PATH)
         host = host or params.GetString("BindHost", "")
         token = token or params.GetString("AuthToken", "")
-        required = params.GetBool("RequireAuth", True)
-    else:
-        required = True
-    if require:
-        required = require.strip().lower() not in ("0", "false", "no", "off")
-    return host or "localhost", token, required
+    return host or "localhost", token
+
+
+# Errors that only mean the client went away (hung up, reset, or broke off TLS)
+_CLIENT_GONE = (ConnectionError, ssl.SSLError, TimeoutError)
+# Largest XML-RPC request body the bridge reads
+MAX_XMLRPC_REQUEST_BYTES = 256 * 1024 * 1024
+# How long a new connection may take to send its first byte, or to finish the TLS handshake
+CONNECTION_SNIFF_TIMEOUT_S = 10.0
+_SNIFF_POLL_S = 0.01
+
+
+async def _peek_first_byte(transport_socket: Any) -> bytes:
+    """The first byte the peer sent, left unread; b"" when it sent nothing in time."""
+    sock = socket.socket(fileno=transport_socket.fileno())
+    try:
+        deadline = time.monotonic() + CONNECTION_SNIFF_TIMEOUT_S
+        while time.monotonic() < deadline:
+            try:
+                return sock.recv(1, socket.MSG_PEEK)
+            except (BlockingIOError, InterruptedError):
+                await asyncio.sleep(_SNIFF_POLL_S)
+        return b""
+    finally:
+        # The connection still belongs to its transport
+        sock.detach()
+
+
+def _peek_first_byte_blocking(sock: socket.socket) -> bytes:
+    """The first byte a new connection sent, left unread; b"" when none came in time."""
+    previous = sock.gettimeout()
+    sock.settimeout(CONNECTION_SNIFF_TIMEOUT_S)
+    try:
+        return sock.recv(1, socket.MSG_PEEK)
+    except OSError:
+        return b""
+    finally:
+        sock.settimeout(previous)
+
+
+def _ignore_sigpipe() -> None:
+    """Let a write to a closed connection fail with an error instead of killing FreeCAD.
+
+    FreeCAD leaves SIGPIPE at its default, which ends the process when a client hangs up
+    while the bridge (or TLS, after its handshake) is still writing. Python itself ignores it.
+    """
+    if (
+        hasattr(signal, "SIGPIPE")
+        and threading.current_thread() is threading.main_thread()
+        and signal.getsignal(signal.SIGPIPE) == signal.SIG_DFL
+    ):
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
 
 class ExecutionRequest:
@@ -228,6 +308,27 @@ class ExecutionRequest:
         self.job = job or Job(code)
         self.echo = echo
         self.result: dict[str, Any] | None = None
+        self.completed = threading.Event()
+
+
+class ApprovalRequest:
+    """A question for the user, answered on the main thread: may the AI's code run?
+
+    With ``ask``, a different question (may another computer connect?), asked by calling it.
+    """
+
+    def __init__(
+        self,
+        tool: str,
+        code: str,
+        detail: str,
+        ask: Callable[[], dict[str, Any]] | None = None,
+    ) -> None:
+        self.tool = tool
+        self.code = code
+        self.detail = detail
+        self.ask = ask
+        self.result: dict[str, Any] = {"decision": "deny"}
         self.completed = threading.Event()
 
 
@@ -264,18 +365,30 @@ class FreecadMCPPlugin:
         # Generate unique instance ID for this server
         self._instance_id = str(uuid.uuid4())
 
-        pref_host, pref_token, require_auth = _connection_preferences()
+        pref_host, pref_token = _connection_preferences()
         host = host or pref_host
         token = pref_token if auth_token is None else auth_token
         self._token_from_file = False
-        if not token and (require_auth or host not in LOOPBACK_HOSTS):
-            # Whoever can reach the port can run code in FreeCAD: by default only callers that
-            # can read the user's token file (the user's own MCP server) get in. Beyond
-            # localhost a token is always required.
+        if not token:
+            # Whoever can reach the port can run code in FreeCAD: only callers that can read
+            # the user's token file (the user's own MCP server) get in. Always on.
             token = load_or_create_token()
             self._token_from_file = True
         self._auth_token = token
-        self._host = host
+        self._hosts, refused = listen_hosts(host)
+        for why in refused:
+            if FREECAD_AVAILABLE:
+                FreeCAD.Console.PrintWarning(f"MCP+: {why}; not listening there\n")
+        self._request_checker = wire.RequestChecker()
+        # A weak reference: the TLS context must not keep a stopped bridge alive
+        expected_token = weakref.WeakMethod(self._expected_token)
+        self._tls_context = (
+            wire.server_tls_context(
+                lambda: ((getter := expected_token()) and getter()) or ""
+            )
+            if wire.psk_available()
+            else None
+        )
         self._port = port
         self._xmlrpc_port = xmlrpc_port
         self._enable_xmlrpc = enable_xmlrpc
@@ -294,6 +407,13 @@ class FreecadMCPPlugin:
         self._request_queue: queue.Queue[ExecutionRequest] = queue.Queue()
         # Runs allowed in while another run waits inside a modal dialog (to inspect or close it)
         self._nested_queue: queue.Queue[ExecutionRequest] = queue.Queue()
+        # Questions for the user before the AI's code runs, and the one on screen
+        self._approval_queue: queue.Queue[ApprovalRequest] = queue.Queue()
+        self._approval_tool: str | None = None
+        # One question at a time per other computer, however many connections it opens
+        self._computer_questions: dict[str, ApprovalRequest] = {}
+        self._computer_lock = threading.Lock()
+        self._headless_refusals_shown: set[str] = set()
         self._timer = None
         # Second timer: Qt never re-fires a timer whose handler is still running, so
         # while a run sits in a modal dialog only this one keeps ticking
@@ -401,6 +521,7 @@ class FreecadMCPPlugin:
             return
 
         self._running = True
+        _ignore_sigpipe()
 
         # Print instance ID to stderr only for test automation (when env var is set).
         # This avoids red error text in FreeCAD's console during normal use.
@@ -435,11 +556,15 @@ class FreecadMCPPlugin:
             FreeCAD.Console.PrintMessage(
                 f"MCP+ Bridge started (Instance ID: {self._instance_id}):\n"
             )
-            FreeCAD.Console.PrintMessage(f"  - JSON-RPC: {self._host}:{self._port}\n")
+            hosts = ", ".join(self._hosts)
+            FreeCAD.Console.PrintMessage(f"  - JSON-RPC: {hosts} port {self._port}\n")
             if self._enable_xmlrpc:
                 FreeCAD.Console.PrintMessage(
-                    f"  - XML-RPC: {self._host}:{self._xmlrpc_port}\n"
+                    f"  - XML-RPC: {hosts} port {self._xmlrpc_port}\n"
                 )
+            FreeCAD.Console.PrintWarning(
+                "MCP+: connected AI agents can run code with your full permissions\n"
+            )
 
         # Start status bar updates in GUI mode
         self._start_status_updates()
@@ -811,6 +936,7 @@ class FreecadMCPPlugin:
         """
         self._last_tick = time.monotonic()
         self._note_modal_dialog()
+        self._run_approvals()
         self._run_requests(self._nested_queue)
         if self._busy_job is not None:
             # A run is waiting inside a nested event loop (a modal dialog); ordinary
@@ -826,6 +952,8 @@ class FreecadMCPPlugin:
         self._last_tick = time.monotonic()
         self._note_modal_dialog()
         if self._busy_job is not None:
+            # e.g. approval for code that closes the dialog the busy run waits in
+            self._run_approvals()
             self._run_requests(self._nested_queue)
 
     def _run_requests(self, requests: queue.Queue[ExecutionRequest]) -> None:
@@ -836,8 +964,12 @@ class FreecadMCPPlugin:
                 outer_job = self._busy_job
                 self._busy_job = request.job
                 try:
+                    # A nested run (inside a modal dialog) is part of the outer run's step
                     result = self._execute_code_sync(
-                        request.code, request.job, request.echo
+                        request.code,
+                        request.job,
+                        request.echo,
+                        undo_step=outer_job is None,
                     )
                 finally:
                     self._busy_job = outer_job
@@ -851,6 +983,100 @@ class FreecadMCPPlugin:
             except Exception as e:
                 if FREECAD_AVAILABLE:
                     FreeCAD.Console.PrintError(f"Queue processing error: {e}\n")
+
+    def _run_approvals(self) -> None:
+        """Ask the user about each waiting approval request (main thread only).
+
+        While the dialog is up, nothing else runs: the timer that called this waits for it.
+        """
+        while not self._approval_queue.empty():
+            try:
+                request = self._approval_queue.get_nowait()
+            except queue.Empty:
+                break
+            self._approval_tool = request.tool
+            try:
+                request.result = (
+                    request.ask()
+                    if request.ask
+                    else approval.ask_user(request.tool, request.code, request.detail)
+                )
+            except Exception as e:
+                request.result = {
+                    "decision": "deny",
+                    "error": f"{type(e).__name__}: {e}",
+                }
+            finally:
+                self._approval_tool = None
+                request.completed.set()
+
+    def _no_gui(self) -> bool:
+        """Whether FreeCAD runs without a window to ask in."""
+        return self._headless or not (FREECAD_AVAILABLE and FreeCAD.GuiUp)
+
+    def request_approval(
+        self, tool: str, code: str, detail: str = ""
+    ) -> dict[str, Any]:
+        """Ask the user whether the AI's ``code`` may run; waits for the answer.
+
+        Returns ``{"decision": "allow", "scope"}`` (scope: once, session, always or
+        headless), ``{"decision": "deny"}``, or ``{"decision": "headless_off"}`` when FreeCAD
+        runs headless and the user hasn't allowed the AI's code there.
+        """
+        if self._no_gui():
+            if approval.headless_allowed():
+                return {"decision": "allow", "scope": "headless"}
+            return {"decision": "headless_off"}
+        scope = approval.standing_permission()
+        if scope:
+            return {"decision": "allow", "scope": scope}
+        request = ApprovalRequest(str(tool), str(code), str(detail))
+        self._approval_queue.put(request)
+        # The dialog closes itself after ANSWER_TIMEOUT_S; the margin covers waiting for a
+        # busy main thread first
+        if not request.completed.wait(timeout=approval.ANSWER_TIMEOUT_S * 2):
+            return {"decision": "deny", "error": "no answer"}
+        return request.result
+
+    def _computer_allowed(self, peer: Any) -> bool:
+        """Whether the computer at ``peer`` may connect; asks the user about a new one.
+
+        Called once the connection proved it knows the token (TLS-PSK), from a server thread:
+        this computer always may; another one may when the user let it in, for this session
+        or always. Headless FreeCAD can't ask, so it lets in only those always allowed.
+        """
+        address = wire.peer_address(peer)
+        # A connection to the listen address from this computer comes from that address
+        if wire.is_loopback(address) or address in self._hosts:
+            return True
+        known = approval.computer_allowed(address)
+        if known is not None:
+            return known
+        if self._no_gui():
+            if FREECAD_AVAILABLE and address not in self._headless_refusals_shown:
+                self._headless_refusals_shown.add(address)
+                FreeCAD.Console.PrintWarning(
+                    f"MCP+: turned away {address}: allow it once in FreeCAD with a window\n"
+                )
+            return False
+        with self._computer_lock:
+            request = self._computer_questions.get(address)
+            if request is None:
+                request = ApprovalRequest(
+                    f"connection from {address}",
+                    "",
+                    "",
+                    ask=lambda: approval.ask_about_computer(address),
+                )
+                self._computer_questions[address] = request
+                self._approval_queue.put(request)
+        try:
+            request.completed.wait(timeout=approval.ANSWER_TIMEOUT_S * 2)
+        finally:
+            with self._computer_lock:
+                if self._computer_questions.get(address) is request:
+                    del self._computer_questions[address]
+        return request.result.get("decision") == "allow"
 
     def _note_modal_dialog(self) -> None:
         """Remember the title of the modal dialog that is up, if any (main thread only)."""
@@ -959,33 +1185,63 @@ class FreecadMCPPlugin:
             },
             "modal_dialog": self._modal_title,
             "jobs_running": len(self._jobs.running()),
+            "approval_pending": self._approval_tool,
+            "code_approval": (
+                ("headless" if approval.headless_allowed() else "headless_off")
+                if self._no_gui()
+                else approval.standing_permission() or "ask"
+            ),
             "auth_required": bool(self._auth_token),
             "token_file": str(token_file()) if self._token_from_file else None,
-            "host": self._host,
+            "host": ", ".join(self._hosts),
+            "tls_psk": self._tls_context is not None,
         }
 
-    def _request_allowed(self, origin: str | None, token: str | None) -> bool:
-        """Whether a request with these Origin and token values may be served."""
-        if (
+    def _host_allowed(self, host: str | None) -> bool:
+        """False unless the request was sent to this computer or a listen address.
+
+        A web page whose own name was pointed at this computer ("DNS rebinding") sends that
+        name in the Host header.
+        """
+        name = urlparse(f"//{host}").hostname if host else None
+        return bool(name) and (wire.is_loopback(name) or name in self._hosts)
+
+    @staticmethod
+    def _origin_allowed(origin: str | None) -> bool:
+        """False for a web page from another site, reaching the bridge through a browser."""
+        return not (
             origin
             and origin != "null"
             and urlparse(origin).hostname not in LOOPBACK_HOSTS
-        ):
-            # A web page from another site, reaching the bridge through a browser
-            return False
-        expected = self._auth_token
+        )
+
+    def _expected_token(self) -> str:
+        """The token requests are signed with."""
         if self._token_from_file:
             # Re-read, so a token replaced from the preferences applies without a restart
-            expected = read_token() or expected
-        if expected:
-            return bool(token) and hmac.compare_digest(str(token), expected)
-        return True
+            return read_token() or self._auth_token
+        return self._auth_token
+
+    def _connection_kind(self, first_byte: bytes, peer: Any) -> str | None:
+        """Whether a new connection is "tls", "plain" or refused (None), from its first byte.
+
+        TLS-PSK is accepted from anywhere; plain connections (still signed) only from this
+        computer, so the token never protects an unencrypted connection over the network.
+        """
+        if first_byte == wire.TLS_FIRST_BYTE:
+            return "tls" if self._tls_context is not None else None
+        return (
+            "plain"
+            if first_byte and wire.is_loopback(wire.peer_address(peer))
+            else None
+        )
 
     def _execute_code_sync(
         self,
         code: str,
         job: Job | None = None,
         echo: bool = False,
+        undo_step: bool = False,
     ) -> dict[str, Any]:
         """Execute Python code synchronously (call on main thread only).
 
@@ -993,6 +1249,7 @@ class FreecadMCPPlugin:
             code: Python code to execute.
             job: The job collecting the run's output.
             echo: Also print the run's output to FreeCAD's Report view.
+            undo_step: Make the run's document changes one undo step.
 
         Returns:
             Execution result dictionary.
@@ -1017,10 +1274,15 @@ class FreecadMCPPlugin:
             exec_globals["FreeCADGui"] = FreeCADGui
             exec_globals["Gui"] = FreeCADGui
 
+        undo_docs = undo.open_step(FreeCAD) if undo_step and FREECAD_AVAILABLE else []
         try:
             with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
                 compiled = compile(code, "<mcp>", "exec")
-                exec(compiled, exec_globals)  # noqa: S102
+                try:
+                    exec(compiled, exec_globals)  # noqa: S102
+                finally:
+                    # Also after a failure, so the run's partial changes undo in one step
+                    undo.close_step(FreeCAD, undo_docs)
 
             elapsed = (time.perf_counter() - start) * 1000
             return {
@@ -1050,7 +1312,9 @@ class FreecadMCPPlugin:
 
     def _run_socket_server(self) -> None:
         """Run the asyncio event loop in background thread."""
-        self._socket_loop = asyncio.new_event_loop()
+        # A selector loop on every platform: a new connection is held unread until its first
+        # byte says TLS or plain (Windows' default proactor loop starts reading at once)
+        self._socket_loop = asyncio.SelectorEventLoop()
         asyncio.set_event_loop(self._socket_loop)
 
         try:
@@ -1073,12 +1337,87 @@ class FreecadMCPPlugin:
             self._socket_loop.close()
 
     async def _start_socket_server(self) -> None:
-        """Start the TCP server."""
-        self._socket_server = await asyncio.start_server(
-            self._handle_socket_client,
-            self._host,
-            self._port,
+        """Start the TCP server; each connection is TLS-PSK or plain, from its first byte."""
+        plugin = self
+
+        class SniffingProtocol(asyncio.Protocol):
+            """Holds a new connection unread until its first byte says TLS or plain."""
+
+            def connection_made(self, transport: asyncio.BaseTransport) -> None:
+                # Reading starts after this returns: nothing has been read yet
+                transport.pause_reading()  # type: ignore[attr-defined]
+                asyncio.get_running_loop().create_task(
+                    plugin._accept_socket_client(transport)  # type: ignore[arg-type]
+                )
+
+        loop = asyncio.get_running_loop()
+        self._socket_server = await loop.create_server(
+            SniffingProtocol, self._hosts, self._port
         )
+
+    async def _accept_socket_client(self, transport: asyncio.Transport) -> None:
+        """Peek at a new connection, start TLS-PSK or plain on it, then serve it."""
+        loop = asyncio.get_running_loop()
+        peer = transport.get_extra_info("peername")
+        kind = None
+        with contextlib.suppress(Exception):
+            first = await _peek_first_byte(transport.get_extra_info("socket"))
+            kind = self._connection_kind(first, peer)
+        if kind is None:
+            transport.close()
+            return
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        if kind == "tls":
+            try:
+                tls_transport = await loop.start_tls(
+                    transport,
+                    protocol,
+                    self._tls_context,  # type: ignore[arg-type]
+                    server_side=True,
+                    ssl_handshake_timeout=CONNECTION_SNIFF_TIMEOUT_S,
+                )
+            except OSError:
+                transport.close()
+                return
+            if tls_transport is None:
+                transport.close()
+                return
+            transport = tls_transport  # type: ignore[assignment]
+            if not await loop.run_in_executor(None, self._computer_allowed, peer):
+                transport.close()
+                return
+        else:
+            transport.set_protocol(protocol)
+            transport.resume_reading()
+        protocol.connection_made(transport)
+        writer = asyncio.StreamWriter(transport, protocol, reader, loop)
+        await self._handle_socket_client(reader, writer)
+
+    async def _signed_jsonrpc_response(self, request: Any) -> dict[str, Any]:
+        """Check a JSON-RPC request's signature, serve it, and sign the answer."""
+        if not isinstance(request, dict):
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32600, "message": "Invalid Request"},
+            }
+        token = self._expected_token()
+        auth = request.pop("auth", None)
+        body = wire.canonical(
+            {key: request.get(key) for key in ("id", "method", "params")}
+        )
+        if not self._request_checker.check(token, auth, body):
+            return {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "error": {"code": -32001, "message": "Unauthorized"},
+            }
+        response = await self._process_jsonrpc_request(request)
+        response["sig"] = wire.sign_response(
+            token, auth["nonce"], wire.canonical(response)
+        )
+        return response
 
     async def _handle_socket_client(
         self,
@@ -1099,8 +1438,8 @@ class FreecadMCPPlugin:
 
                 try:
                     request = json.loads(data.decode("utf-8"))
-                    response = await self._process_jsonrpc_request(request)
-                except json.JSONDecodeError as e:
+                    response = await self._signed_jsonrpc_response(request)
+                except (json.JSONDecodeError, UnicodeDecodeError) as e:
                     response = {
                         "jsonrpc": "2.0",
                         "id": None,
@@ -1114,7 +1453,13 @@ class FreecadMCPPlugin:
                 response_data = json.dumps(response).encode("utf-8") + b"\n"
                 writer.write(response_data)
                 await writer.drain()
+                if "sig" not in response:
+                    # Not our protocol (not JSON, or not signed with the token): say why,
+                    # then hang up
+                    break
 
+        except _CLIENT_GONE:
+            pass
         except Exception as e:
             if FREECAD_AVAILABLE:
                 FreeCAD.Console.PrintError(f"MCP socket error: {e}\n")
@@ -1138,13 +1483,6 @@ class FreecadMCPPlugin:
         request_id = request.get("id")
         method = request.get("method")
         params = request.get("params", {})
-
-        if not self._request_allowed(None, request.get("auth")):
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {"code": -32001, "message": "Unauthorized"},
-            }
 
         if method == "status":
             return {"jsonrpc": "2.0", "id": request_id, "result": self.bridge_status()}
@@ -1181,6 +1519,18 @@ class FreecadMCPPlugin:
                 "id": request_id,
                 "result": {"instance_id": self._instance_id},
             }
+
+        if method == "approve":
+            loop = asyncio.get_event_loop()
+            answer = await loop.run_in_executor(
+                None,
+                lambda: self.request_approval(
+                    params.get("tool", ""),
+                    params.get("code", ""),
+                    params.get("detail", ""),
+                ),
+            )
+            return {"jsonrpc": "2.0", "id": request_id, "result": answer}
 
         # Handle execute via queue
         if method == "execute":
@@ -1219,53 +1569,55 @@ class FreecadMCPPlugin:
 
     def _run_xmlrpc_server(self) -> None:
         """Run the XML-RPC server."""
-        # Custom request handler that silently handles GET requests
-        # instead of logging "Unsupported method ('GET')" errors
         plugin = self
 
         class QuietXMLRPCRequestHandler(xmlrpc.server.SimpleXMLRPCRequestHandler):
-            """XML-RPC handler that responds gracefully to GET requests."""
+            """XML-RPC handler that serves only signed requests, without logging each one."""
 
             def do_POST(self) -> None:
-                """Refuse requests from foreign web pages, or without the auth token."""
-                token = self.headers.get("X-MCP-Token")
-                authorization = self.headers.get("Authorization", "")
-                if not token and authorization.startswith("Bearer "):
-                    token = authorization[len("Bearer ") :]
-                if not plugin._request_allowed(self.headers.get("Origin"), token):
+                """Serve a signed request and sign the answer; refuse the rest (403).
+
+                Refused: requests from web pages (Origin, Host), unsigned or wrongly signed ones,
+                and replays.
+                """
+                if not (
+                    plugin._origin_allowed(self.headers.get("Origin"))
+                    and plugin._host_allowed(self.headers.get("Host"))
+                ):
                     self.send_error(403)
                     return
-                super().do_POST()
-
-            def do_GET(self) -> None:
-                """Handle GET requests with a friendly plain-text response.
-
-                Responds to HTTP GET requests with a simple message instead of
-                logging "Unsupported method ('GET')" errors. This is useful for
-                health checks and browser probing.
-
-                Args:
-                    self: The request handler instance.
-
-                Returns:
-                    None. Writes response directly to wfile.
-
-                Side Effects:
-                    Sends HTTP 200 response with Content-type: text/plain header
-                    and writes response body to self.wfile.
-
-                Example:
-                    A simple GET request to check if the bridge is running::
-
-                        curl http://localhost:9875/
-                        # Returns: FreeCAD MCP+ Bridge - XML-RPC endpoint (POST only)
-                """
-                response = b"FreeCAD MCP+ Bridge - XML-RPC endpoint (POST only)"
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    length = -1
+                if not 0 <= length <= MAX_XMLRPC_REQUEST_BYTES:
+                    self.send_error(400)
+                    return
+                body = self.rfile.read(length)
+                token = plugin._expected_token()
+                auth = {
+                    "ts": self.headers.get("X-MCP-Time"),
+                    "nonce": self.headers.get("X-MCP-Nonce"),
+                    "sig": self.headers.get("X-MCP-Sig"),
+                }
+                if not plugin._request_checker.check(token, auth, body):
+                    self.send_error(403)
+                    return
+                response = self.server._marshaled_dispatch(  # type: ignore[attr-defined]
+                    body, getattr(self, "_dispatch", None), self.path
+                )
                 self.send_response(200)
-                self.send_header("Content-type", "text/plain")
-                self.send_header("Content-Length", str(len(response)))
+                self.send_header("Content-type", "text/xml")
+                self.send_header("Content-length", str(len(response)))
+                self.send_header(
+                    "X-MCP-Sig", wire.sign_response(token, auth["nonce"], response)
+                )
                 self.end_headers()
                 self.wfile.write(response)
+
+            def do_GET(self) -> None:
+                """Refuse (403): a GET can't be signed, so it gets nothing, not even a banner."""
+                self.send_error(403)
 
             def log_message(self, format: str, *args: Any) -> None:
                 """Suppress HTTP request logging to keep console output clean.
@@ -1304,14 +1656,52 @@ class FreecadMCPPlugin:
 
             daemon_threads = True
 
+            def handle_error(self, request: Any, client_address: Any) -> None:
+                """Stay quiet when the client hung up; print anything else."""
+                if not isinstance(sys.exc_info()[1], _CLIENT_GONE):
+                    super().handle_error(request, client_address)
+
+            def finish_request(self, request: Any, client_address: Any) -> None:
+                """Start TLS-PSK or plain on the connection (its own thread), then serve it."""
+                kind = plugin._connection_kind(
+                    _peek_first_byte_blocking(request), client_address
+                )
+                if kind is None:
+                    return
+                if kind == "tls":
+                    try:
+                        request.settimeout(CONNECTION_SNIFF_TIMEOUT_S)
+                        request = plugin._tls_context.wrap_socket(  # type: ignore[union-attr]
+                            request, server_side=True
+                        )
+                        request.settimeout(None)
+                    except OSError:
+                        return
+                    if not plugin._computer_allowed(client_address):
+                        with contextlib.suppress(OSError):
+                            request.close()
+                        return
+                try:
+                    super().finish_request(request, client_address)
+                finally:
+                    if kind == "tls":
+                        with contextlib.suppress(OSError):
+                            request.close()
+
+        servers: list[ThreadedXMLRPCServer] = []
         try:
-            self._xmlrpc_server = ThreadedXMLRPCServer(
-                (self._host, self._xmlrpc_port),
-                requestHandler=QuietXMLRPCRequestHandler,
-                allow_none=True,
-                logRequests=False,
-            )
+            for host in self._hosts:
+                servers.append(
+                    ThreadedXMLRPCServer(
+                        (host, self._xmlrpc_port),
+                        requestHandler=QuietXMLRPCRequestHandler,
+                        allow_none=True,
+                        logRequests=False,
+                    )
+                )
         except OSError as e:
+            for server in servers:
+                server.server_close()
             if e.errno == errno.EADDRINUSE:
                 if FREECAD_AVAILABLE:
                     FreeCAD.Console.PrintWarning(
@@ -1324,9 +1714,7 @@ class FreecadMCPPlugin:
                 )
             return
 
-        # Set a timeout so handle_request() doesn't block forever
-        # This allows the server to check self._running periodically
-        self._xmlrpc_server.timeout = 0.5
+        self._xmlrpc_server = servers[0]
 
         # Register methods (type: ignore needed - xmlrpc types are overly restrictive)
         self._xmlrpc_server.register_function(self._xmlrpc_execute, "execute")  # type: ignore[arg-type]
@@ -1337,14 +1725,23 @@ class FreecadMCPPlugin:
         self._xmlrpc_server.register_function(self._xmlrpc_get_view, "get_view")  # type: ignore[arg-type]
         self._xmlrpc_server.register_function(self.get_output_page, "get_output_page")  # type: ignore[arg-type]
         self._xmlrpc_server.register_function(self.bridge_status, "status")  # type: ignore[arg-type]
+        self._xmlrpc_server.register_function(self.request_approval, "approve")  # type: ignore[arg-type]
         self._xmlrpc_server.register_introspection_functions()
+        for server in servers[1:]:
+            server.funcs = self._xmlrpc_server.funcs
 
-        while self._running:
-            try:
-                self._xmlrpc_server.handle_request()
-            except OSError:
-                # Socket was closed during shutdown - this is expected
-                break
+        try:
+            while self._running:
+                # Wakes every half second to see whether the bridge is stopping
+                ready, _, _ = select.select(servers, [], [], 0.5)
+                for server in ready:
+                    server.handle_request()
+        except (OSError, ValueError):
+            # stop() closed the first server's socket
+            pass
+        finally:
+            for server in servers[1:]:
+                server.server_close()
 
     def _xmlrpc_ping(self) -> dict[str, Any]:
         """XML-RPC ping handler."""
@@ -1462,7 +1859,9 @@ else:
                     view.viewRight()
 
                 # Capture screenshot
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".png", delete=False, dir={str(work_dir())!r}
+                ) as f:
                     temp_path = f.name
 
                 view.saveImage(temp_path, {width}, {height}, "Current")

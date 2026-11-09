@@ -24,6 +24,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from freecad_mcp.bridge.wire import work_dir
+
 HERE = Path(__file__).parent
 CAM_SRC = "src/Mod/CAM"
 BUILD_CAM = "build/release/Mod/CAM"
@@ -225,7 +227,7 @@ def cam_ab(
     """Run probe on ref_a and ref_b; see the cam_ab MCP tool for the result."""
     root = find_repo(repo)
     files, other = changed_files(root, [ref_a, ref_b])
-    work = Path(tempfile.mkdtemp(prefix="cam_ab_"))
+    work = Path(tempfile.mkdtemp(prefix="cam_ab_", dir=work_dir()))
     sides: dict[str, Any] = {}
     try:
         for label, ref in (("A", ref_a), ("B", ref_b)):

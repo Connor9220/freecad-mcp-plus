@@ -40,23 +40,49 @@ The rest of this README is adapted from the original server's documentation.
 
 **What MCP+ allows.** MCP+ lets an AI assistant run any Python code in your FreeCAD session, with
 your user's permissions, the same as a macro you run yourself. There is no sandbox: the code can
-read and write your files, start programs and reach the network. Your MCP client is the guardrail:
-use one you trust, and have it ask for your approval before it runs tool calls.
+read and write your files, start programs and reach the network. MCP+ shows you the code first and
+runs it only when you say so (below); your MCP client's own approval prompts are a second guard.
+
+**Approving the AI's code.** Before code the AI wrote runs (`execute_python`, `execute_python_file`,
+`safe_execute`, `run_macro`, `fc_eval`, a `cam_ab` probe, or the `python` steps of
+`cam_record_demo`), FreeCAD shows it in a dialog. Run it only this time, for the rest of the FreeCAD
+session, or always; Cancel (the default button) doesn't run it. **Edit → Preferences → MCP+ →
+Security → GUI AI Permission** shows and changes that choice: Ask every time, Allow for this FreeCAD session, or
+Always allow. Documents and files the AI reads can carry instructions planted by someone else, so
+read the code before you run it. The other tools (`create_box`, the CAM tools and so on) run the
+add-on's own code and don't ask.
+
+- Headless FreeCAD (FreeCADCmd) has no window to ask in, so it refuses the AI's code (the other tools
+  still work) unless you set **Headless AI Permission** to allow it in the same preferences (headless
+  FreeCAD reads them too).
+- `fc_eval` and `cam_ab` start their own FreeCADCmd; they ask in the FreeCAD you have open, and
+  refuse when none is running.
+- For unattended setups, set **GUI AI Permission** to always allow, and **Headless AI
+  Permission** for headless FreeCAD.
 
 **Who can reach the bridge.** The bridge only runs while you start it (auto-start is off unless you
 turn it on in **Edit → Preferences → MCP+**). It listens on `localhost` (ports 9875 and 9876 by
-default), so other computers can't reach it. Every request must also carry a token:
+default), so other computers can't reach it. Every request and every answer is signed with a token:
 
 - On its first start the bridge creates a random token in a file only your user can read:
   `~/.config/mcp-plus/token` on Linux, `~/Library/Application Support/mcp-plus/token` on macOS,
   `%APPDATA%\mcp-plus\token` on Windows. The MCP server reads the same file, so nothing needs
   configuring, while other users' programs on the same computer can't get in.
+- The token itself never travels: each request carries an HMAC signature made with it, which can't
+  be changed or replayed, and the bridge signs its answers the same way.
 - **Edit → Preferences → MCP+ → Security** shows the token file, copies the token, or replaces it
-  (takes effect at once). Turning the token off is possible for localhost only, and not recommended.
+  (takes effect at once). The token can't be turned off.
 - Requests sent by web pages in your browser (an `Origin` other than localhost) are refused.
-- To use FreeCAD from another computer, prefer an ssh tunnel to its port. If you do set
-  **Listen on** to another address, the MCP server there needs the token in `FREECAD_AUTH_TOKEN`;
-  the bridge never listens beyond localhost without one.
+- To use FreeCAD from another computer, the simplest way is to run the MCP server there over ssh
+  as a stdio server (`ssh <host> freecad-mcp`), which keeps the bridge on localhost. Otherwise set
+  **Listen on** to localhost and one of this computer's addresses, such as
+  `localhost, 192.168.0.10` (leave localhost out to use the address only; `0.0.0.0` isn't allowed; the first time
+  another computer connects, FreeCAD asks whether to let it in, for this session or always) and give the MCP server there the token in `FREECAD_AUTH_TOKEN`. Those connections are encrypted with the token as the key
+  (TLS-PSK), which needs Python 3.13 or newer on both sides: FreeCAD's own Python and the MCP
+  server's. On an older FreeCAD the bridge stays on localhost; an ssh tunnel to its port works
+  everywhere. `FREECAD_MCP_TLS=1` makes the MCP server use TLS-PSK even to `localhost` (a port
+  forward to another machine).
+- The MCP server's own HTTP mode (`FREECAD_TRANSPORT=http`) listens on this computer only.
 
 **Where your data goes.** The add-on and the MCP server collect nothing and send nothing to anyone;
 there is no telemetry. But whatever the assistant asks FreeCAD for becomes part of its conversation:

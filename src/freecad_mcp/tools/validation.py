@@ -14,6 +14,8 @@ may fail or create invalid geometry.
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from freecad_mcp.tools.approval import require_approval
+
 
 def register_validation_tools(
     mcp: Any, get_bridge: Callable[[], Awaitable[Any]]
@@ -466,6 +468,8 @@ else:
     ) -> dict[str, Any]:
         """Execute Python code with automatic validation and rollback on failure.
 
+        FreeCAD shows the code to the user, who approves it before it runs.
+
         This tool provides transactional semantics for FreeCAD operations:
         1. Opens an undo transaction
         2. Executes the provided code
@@ -501,6 +505,7 @@ else:
                 if result["success"]:
                     print(f"Created: {result['result']['created']}")
         """
+        await require_approval(get_bridge, "safe_execute", code)
         bridge = await get_bridge()
 
         # Escape the user code for embedding in the wrapper

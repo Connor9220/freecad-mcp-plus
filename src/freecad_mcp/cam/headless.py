@@ -34,6 +34,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from freecad_mcp.bridge.wire import work_dir
 from freecad_mcp.cam import ab
 
 HERE = Path(__file__).parent
@@ -157,7 +158,7 @@ def fc_eval(
         doc_path = Path(fcstd).expanduser().resolve()
         if not doc_path.is_file():
             raise FileNotFoundError(f"fcstd not found: {doc_path}")
-    work = Path(tempfile.mkdtemp(prefix="fc_eval_"))
+    work = Path(tempfile.mkdtemp(prefix="fc_eval_", dir=work_dir()))
     try:
         out = work / "out.json"
         argf = work / "args.json"
@@ -569,7 +570,7 @@ def cam_tests(
     files: list[str] = []
     expect: list[str] = []
     base = None
-    work = Path(tempfile.mkdtemp(prefix="cam_tests_"))
+    work = Path(tempfile.mkdtemp(prefix="cam_tests_", dir=work_dir()))
     ov = work / "overlay_worktree"
     try:
         if use_source:

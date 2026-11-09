@@ -37,7 +37,7 @@ kill_port() {
 is_bridge_running() {
     local port=${1:-9875}  # Default to port 9875
     curl -s --connect-timeout 1 --max-time 1 "http://localhost:$port" > /dev/null 2>&1 && \
-    uv run python -c "import socket; socket.setdefaulttimeout(2); import xmlrpc.client; print(xmlrpc.client.ServerProxy('http://localhost:$port').ping())" 2>/dev/null | grep -q "pong"
+    uv run python -c "import socket; socket.setdefaulttimeout(2); from freecad_mcp.bridge.xmlrpc import signed_proxy; print(signed_proxy('localhost', $port).ping())" 2>/dev/null | grep -q "pong"
 }
 
 # Force kill any processes on the default MCP bridge ports

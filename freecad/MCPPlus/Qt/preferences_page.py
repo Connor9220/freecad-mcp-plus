@@ -36,7 +36,16 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
 
     def _setup_ui(self) -> None:
         """Set up the user interface."""
-        layout = QtWidgets.QVBoxLayout(self)
+        # The page is taller than the Preferences dialog: scroll it instead of clipping
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        outer.addWidget(scroll)
+        content = QtWidgets.QWidget()
+        scroll.setWidget(content)
+        layout = QtWidgets.QVBoxLayout(content)
         layout.setContentsMargins(10, 10, 10, 10)
 
         # Title
@@ -63,6 +72,13 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
             "The bridge allows AI assistants like Claude to control FreeCAD."
         )
         startup_layout.addWidget(self.auto_start_cb)
+
+        start_note = QtWidgets.QLabel(
+            "While the bridge runs, AI agents connected to it can run code in FreeCAD with "
+            "your full permissions (see the AI Permission settings below)."
+        )
+        start_note.setWordWrap(True)
+        startup_layout.addWidget(start_note)
 
         layout.addWidget(startup_group)
 
@@ -115,21 +131,11 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
 
         security_intro = QtWidgets.QLabel(
             "Whoever can reach the bridge can run any Python in FreeCAD as you. Every request "
-            "must carry a token that only your user can read; your MCP server picks it up "
-            "from the token file by itself."
+            "and answer is signed with a token that only your user can read; your MCP server "
+            "picks it up from the token file by itself."
         )
         security_intro.setWordWrap(True)
         security_layout.addRow(security_intro)
-
-        self.require_auth_cb = QtWidgets.QCheckBox(
-            "Require the token for every request (recommended)"
-        )
-        self.require_auth_cb.setToolTip(
-            "Without it, any program on this computer, including other users' programs,\n"
-            "can run code in FreeCAD while the bridge is running. Listening on an address\n"
-            "other than localhost always requires the token."
-        )
-        security_layout.addRow(self.require_auth_cb)
 
         self.token_file_label = QtWidgets.QLabel()
         self.token_file_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
@@ -156,11 +162,60 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
 
         self.bind_host_edit = QtWidgets.QLineEdit()
         self.bind_host_edit.setToolTip(
-            "Address the bridge listens on. localhost (the default) keeps it to this computer.\n"
-            "To reach it from another computer, prefer an ssh tunnel; if you set an address\n"
-            "here, the MCP server there needs FREECAD_AUTH_TOKEN. Restart the bridge after changing it."
+            "Addresses the bridge listens on, separated by commas, such as\n"
+            "localhost, 192.168.0.10. localhost (the default) keeps it to this computer.\n"
+            "One other address is allowed. It needs FreeCAD with Python 3.13 or newer: connections from other\n"
+            "computers are encrypted with the token (TLS-PSK), and the MCP server there needs\n"
+            "FREECAD_AUTH_TOKEN. The first time another computer connects, FreeCAD asks you\n"
+            "whether to let it in. Every address at once (0.0.0.0) isn't allowed. Restart the\n"
+            "bridge after changing it."
         )
         security_layout.addRow("Listen on:", self.bind_host_edit)
+
+        computers_row = QtWidgets.QHBoxLayout()
+        self.computers_label = QtWidgets.QLabel()
+        self.computers_label.setWordWrap(True)
+        self.computers_label.setToolTip(
+            "Other computers you chose to always let connect. FreeCAD asks again about\n"
+            "each one after Forget All."
+        )
+        forget_button = QtWidgets.QPushButton("Forget All")
+        forget_button.clicked.connect(self._forget_computers)
+        computers_row.addWidget(self.computers_label, 1)
+        computers_row.addWidget(forget_button)
+        security_layout.addRow("Allowed computers:", computers_row)
+
+        permission_intro = QtWidgets.QLabel(
+            "Not every task has its own MCP tool, so the AI agent sometimes needs to execute "
+            "Python code it writes itself (execute_python, execute_python_file, safe_execute, "
+            "run_macro, fc_eval), much like typing into FreeCAD's Python console or running a "
+            "macro. That code runs with your full permissions, so these settings control when "
+            "it may run. Without it, the AI can still use the regular tools (modeling, sketches, "
+            "CAM and so on), but may not manage every task."
+        )
+        permission_intro.setWordWrap(True)
+        security_layout.addRow(permission_intro)
+
+        self.code_approval_combo = QtWidgets.QComboBox()
+        self.code_approval_combo.addItem("Ask every time", "ask")
+        self.code_approval_combo.addItem("Allow for this FreeCAD session", "session")
+        self.code_approval_combo.addItem("Always allow (not recommended)", "always")
+        self.code_approval_combo.setToolTip(
+            "Whether FreeCAD shows each piece of Python the AI wants to run and runs it only\n"
+            "when you click Run. Allowed code runs at once, with your full permissions.\n"
+            "Documents and files the AI reads can carry instructions planted by someone else."
+        )
+        security_layout.addRow("GUI AI Permission:", self.code_approval_combo)
+
+        self.headless_combo = QtWidgets.QComboBox()
+        self.headless_combo.addItem("Normal tools only", False)
+        self.headless_combo.addItem("Allow the advanced tools (not recommended)", True)
+        self.headless_combo.setToolTip(
+            "Headless FreeCAD (FreeCADCmd) has no window to ask in, so it can't ask first.\n"
+            "Normal tools only: it refuses the AI's Python. Allow: it runs it without asking.\n"
+            "Headless FreeCAD reads this setting too."
+        )
+        security_layout.addRow("Headless AI Permission:", self.headless_combo)
 
         layout.addWidget(security_group)
 
@@ -229,11 +284,17 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
         self.socket_spin.setValue(get_socket_port())
 
         from ..freecad_mcp_bridge.auth import token_file
-        from ..preferences import get_bind_host, get_require_auth
+        from ..preferences import get_bind_host
 
-        self.require_auth_cb.setChecked(get_require_auth())
         self.bind_host_edit.setText(get_bind_host())
         self.token_file_label.setText(str(token_file()))
+        self._show_computers()
+
+        from ..freecad_mcp_bridge.approval import headless_allowed, standing_permission
+
+        index = self.code_approval_combo.findData(standing_permission() or "ask")
+        self.code_approval_combo.setCurrentIndex(max(index, 0))
+        self.headless_combo.setCurrentIndex(1 if headless_allowed() else 0)
 
     def saveSettings(self) -> None:
         """Save settings from widgets to FreeCAD preferences.
@@ -259,17 +320,23 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
         set_xmlrpc_port(self.xmlrpc_spin.value())
         set_socket_port(self.socket_spin.value())
 
-        from ..preferences import (
-            get_bind_host,
-            get_require_auth,
-            set_bind_host,
-            set_require_auth,
+        from ..freecad_mcp_bridge.approval import (
+            set_headless_allowed,
+            set_standing_permission,
+            standing_permission,
         )
+        from ..preferences import get_bind_host, set_bind_host
 
-        old_security = (get_require_auth(), get_bind_host())
-        set_require_auth(self.require_auth_cb.isChecked())
-        set_bind_host(self.bind_host_edit.text())
-        if (get_require_auth(), get_bind_host()) != old_security:
+        scope = self.code_approval_combo.currentData()
+        if scope != (standing_permission() or "ask"):
+            set_standing_permission(scope)
+        set_headless_allowed(bool(self.headless_combo.currentData()))
+
+        old_host = get_bind_host()
+        new_host = self._allowed_listen(self.bind_host_edit.text())
+        self.bind_host_edit.setText(new_host)
+        set_bind_host(new_host)
+        if get_bind_host() != old_host:
             import FreeCAD
 
             FreeCAD.Console.PrintMessage(
@@ -300,6 +367,30 @@ class MCPBridgePreferencesPage(QtWidgets.QWidget):
             "MCP+",
             "Token copied. Treat it like a password: whoever has it can run code in FreeCAD.",
         )
+
+    def _allowed_listen(self, setting: str) -> str:
+        """``setting`` without the addresses the bridge may not listen on (says why)."""
+        from ..freecad_mcp_bridge.server import listen_hosts
+
+        hosts, refused = listen_hosts(setting)
+        if refused:
+            QtWidgets.QMessageBox.warning(
+                self, "MCP+", "Removed from Listen on:\n" + "\n".join(refused)
+            )
+        return ", ".join(hosts)
+
+    def _show_computers(self) -> None:
+        """Show the other computers always allowed to connect."""
+        from ..freecad_mcp_bridge.approval import always_allowed_computers
+
+        self.computers_label.setText(", ".join(always_allowed_computers()) or "None")
+
+    def _forget_computers(self) -> None:
+        """Ask again about every other computer before it may connect."""
+        from ..freecad_mcp_bridge.approval import forget_computers
+
+        forget_computers()
+        self._show_computers()
 
     def _new_token(self) -> None:
         """Replace the token file with a new token."""

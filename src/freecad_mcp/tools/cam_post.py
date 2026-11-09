@@ -56,7 +56,8 @@ def register_post_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> N
                 own post, "" means Job.PostProcessorArgs. Machine-based posts take
                 a JSON dict of property overrides instead. The job is left
                 unchanged afterwards.
-            output: File to write (always the full G-code). Default: a temp file.
+            output: File to write (always the full G-code). Default: a new file in the MCP+
+                add-on's private folder, on FreeCAD's computer.
                 Several output sections (SplitOutput) are written as extra files.
             doc_name: Document name. Uses the active document if None.
             return_gcode: Also return the first max_lines lines of G-code.

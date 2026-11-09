@@ -131,23 +131,13 @@ def set_socket_port(port: int) -> None:
     get_param().SetInt("SocketPort", port)
 
 
-def get_require_auth() -> bool:
-    """Whether every bridge request must carry the per-user token (default on)."""
-    return get_param().GetBool("RequireAuth", True)
-
-
-def set_require_auth(enabled: bool) -> None:
-    """Set whether every bridge request must carry the per-user token."""
-    get_param().SetBool("RequireAuth", enabled)
-
-
 def get_bind_host() -> str:
-    """Address the bridge listens on (default localhost)."""
+    """Addresses the bridge listens on, separated by commas (default localhost)."""
     return get_param().GetString("BindHost", "") or "localhost"
 
 
 def set_bind_host(host: str) -> None:
-    """Set the address the bridge listens on; localhost keeps it to this machine."""
+    """Set the addresses the bridge listens on; localhost alone keeps it to this machine."""
     host = host.strip()
     get_param().SetString("BindHost", "" if host in ("", "localhost") else host)
 

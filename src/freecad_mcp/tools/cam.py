@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from freecad_mcp.cam import ab
+from freecad_mcp.tools.approval import require_approval
 
 _STATS_SRC = (Path(__file__).parent.parent / "cam" / "fc_path_stats.py").read_text()
 
@@ -88,7 +89,7 @@ def register_cam_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> No
             probe: Python run inside FreeCAD that sets _result_. It can use
                 FreeCAD, doc (the opened fcstd), stats_for, path_stats,
                 cam_operations, find_object. Empty: path stats of every CAM
-                object in fcstd.
+                object in fcstd. The user approves a probe before it runs.
             fcstd: Document to open on both sides. Every CAM object is touched and
                 recomputed before the probe runs.
             ref_a: Git ref for side A (default "main").
@@ -103,6 +104,12 @@ def register_cam_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> No
             sides run the built version), stale_objects, differences (path: A vs
             B), and the full A/B results including which overlaid modules loaded.
         """
+        if probe:
+            await require_approval(
+                get_bridge, "cam_ab", probe,
+                "Runs as the probe in two separate headless FreeCADCmd processes.",
+                runs_in_freecad=False,
+            )  # fmt: skip
         return await asyncio.to_thread(
             lambda: ab.cam_ab(
                 probe=probe, fcstd=fcstd, ref_a=ref_a, ref_b=ref_b, repo=repo,
