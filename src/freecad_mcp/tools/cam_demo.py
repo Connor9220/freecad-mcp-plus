@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from freecad_mcp.cam import demo
+from freecad_mcp.tools.approval import require_approval
 
 
 def register_demo_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> None:
@@ -89,6 +90,17 @@ def register_demo_tools(mcp: Any, get_bridge: Callable[[], Awaitable[Any]]) -> N
             "log" (per step: action time, notes, errors), "warnings", "display",
             "size", "cut" ([start, end] in the raw capture)}.
         """
+        python = [
+            action["python"]
+            for step in steps
+            for action in step.get("actions", [])
+            if isinstance(action, dict) and "python" in action
+        ]
+        if python:
+            await require_approval(
+                get_bridge, "cam_record_demo", "\n\n# ---- next step ----\n\n".join(python),
+                "The demo's python actions, in the order they run.",
+            )  # fmt: skip
         return await demo.record_demo(
             execute, steps, output, title=title, hold_s=hold_s, glide_ms=glide_ms,
             fps=fps, trim=trim, timeout_s=timeout_s,

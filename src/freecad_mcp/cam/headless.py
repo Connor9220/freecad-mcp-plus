@@ -34,11 +34,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from freecad_mcp.cam import ab
+from freecad_mcp.bridge.wire import work_dir
+from freecad_mcp.cam import tree
 
 HERE = Path(__file__).parent
-CAM_SRC = ab.CAM_SRC
-BUILD_CAM = ab.BUILD_CAM
+CAM_SRC = tree.CAM_SRC
+BUILD_CAM = tree.BUILD_CAM
 TESTS_DIR = f"{BUILD_CAM}/CAMTests"
 
 # startup banner / safe-mode chatter printed by every FreeCAD run
@@ -148,7 +149,7 @@ def fc_eval(
     memory_gb: int = 8,
 ) -> dict[str, Any]:
     """Run Python in the tree's headless FreeCADCmd; see the fc_eval MCP tool."""
-    root = ab.find_repo(repo)
+    root = tree.find_repo(repo)
     src = code
     if file:
         src = Path(file).expanduser().read_text() + ("\n" + code if code else "")
@@ -157,7 +158,7 @@ def fc_eval(
         doc_path = Path(fcstd).expanduser().resolve()
         if not doc_path.is_file():
             raise FileNotFoundError(f"fcstd not found: {doc_path}")
-    work = Path(tempfile.mkdtemp(prefix="fc_eval_"))
+    work = Path(tempfile.mkdtemp(prefix="fc_eval_", dir=work_dir()))
     try:
         out = work / "out.json"
         argf = work / "args.json"
@@ -471,7 +472,7 @@ def _baseline(
             )
     ov = work / "overlay_baseline"
     ov.mkdir()
-    expect = list(ab.build_overlay(root, ref, files, ov))
+    expect = list(tree.build_overlay(root, ref, files, ov))
     by_module: dict[str, list[str]] = {}
     for i in failing:
         if i not in gui_ids:
@@ -551,10 +552,10 @@ def cam_tests(
     comparison is source-vs-source. Otherwise they run from the build with
     FreeCADCmd -t ("build" mode). GUI tests always run from the build.
     """
-    root = ab.find_repo(repo)
+    root = tree.find_repo(repo)
     if baseline:
         # a bad ref raises here, before anything runs
-        ab._git(root, "rev-parse", "--verify", f"{baseline}^{{commit}}")
+        tree._git(root, "rev-parse", "--verify", f"{baseline}^{{commit}}")
     stale, missing = stale_build_files(root)
     resolved, unknown, seen = [], [], set()
     for name in tests:
@@ -569,16 +570,16 @@ def cam_tests(
     files: list[str] = []
     expect: list[str] = []
     base = None
-    work = Path(tempfile.mkdtemp(prefix="cam_tests_"))
+    work = Path(tempfile.mkdtemp(prefix="cam_tests_", dir=work_dir()))
     ov = work / "overlay_worktree"
     try:
         if use_source:
             # every CAM .py that differs between baseline, working tree and build,
             # plus working-tree files the build lacks: the same swap set on both sides
-            files, _other = ab.changed_files(root, [baseline] if baseline else [])
+            files, _other = tree.changed_files(root, [baseline] if baseline else [])
             files = sorted(set(files) | {f"{CAM_SRC}/{rel}" for rel in stale + missing})
             ov.mkdir()
-            expect = list(ab.build_overlay(root, ab.WORKTREE, files, ov))
+            expect = list(tree.build_overlay(root, tree.WORKTREE, files, ov))
         runs = [
             _run_tests_source(
                 root, t=t, overlay=ov, expect=expect, timeout_s=timeout_s, work=work

@@ -17,15 +17,22 @@ from typing import Any
 
 from freecad_mcp.bridge.base import ExecutionResult
 from freecad_mcp.server import get_instance_id
+from freecad_mcp.tools.approval import require_approval
 
-# The bridge protocol this server is written for (2: jobs, paging, status, auth)
-EXPECTED_BRIDGE_PROTOCOL = 2
+# The bridge protocol this server is written for (2: jobs, paging, status, auth; 3: approve)
+EXPECTED_BRIDGE_PROTOCOL = 3
 
-# Runs a file like ``python file.py`` would, inside FreeCAD
-_RUN_FILE_CODE = """
+# Reads a file on the machine running FreeCAD
+_READ_FILE_CODE = """
+with open({path!r}, encoding="utf-8") as _f:
+    _result_ = _f.read()
+"""
+
+# Runs a file's source (as read, and approved, beforehand) like ``python file.py`` would, with
+# ``args`` as variables (run_macro)
+RUN_FILE_CODE = """
 _path = {path!r}
-with open(_path, encoding="utf-8") as _f:
-    _source = _f.read()
+_source = {source!r}
 _ns = {{
     "__name__": "__main__",
     "__file__": _path,
@@ -35,6 +42,7 @@ _ns = {{
     "FreeCADGui": FreeCADGui,
     "Gui": Gui,
 }}
+_ns.update({args!r})
 exec(compile(_source, _path, "exec"), _ns)
 _result_ = _ns.get("_result_")
 """
@@ -78,6 +86,8 @@ def register_execution_tools(
 
         This tool allows you to run arbitrary Python code within FreeCAD's
         environment, with access to all FreeCAD modules and the active document.
+        FreeCAD shows the code to the user, who approves it before it runs; a
+        declined run raises an error (don't retry it unless the user asks).
 
         Args:
             code: Python code to execute. Use `_result_ = value` to return data
@@ -124,6 +134,7 @@ def register_execution_tools(
                     _result_ = []
                 ''')
         """
+        await require_approval(get_bridge, "execute_python", code)
         bridge = await get_bridge()
         result = await bridge.execute_python(code, timeout_ms, echo, while_busy)
         return _execution_dict(result)
@@ -135,6 +146,8 @@ def register_execution_tools(
         echo: bool = False,
     ) -> dict[str, Any]:
         """Run a Python file in FreeCAD, as if it were run directly.
+
+        FreeCAD shows the file's code to the user, who approves it before it runs.
 
         The file is read on the machine running FreeCAD and runs with ``__file__``
         set to its path and ``__name__ == "__main__"``, so an
@@ -152,7 +165,14 @@ def register_execution_tools(
             Same dictionary as execute_python.
         """
         bridge = await get_bridge()
-        code = _RUN_FILE_CODE.format(path=file_path)
+        read = await bridge.execute_python(_READ_FILE_CODE.format(path=file_path))
+        if not read.success:
+            return _execution_dict(read)
+        source = read.result
+        await require_approval(
+            get_bridge, "execute_python_file", source, f"File: {file_path}"
+        )
+        code = RUN_FILE_CODE.format(path=file_path, source=source, args={})
         result = await bridge.execute_python(code, timeout_ms, echo)
         return _execution_dict(result)
 
@@ -197,14 +217,15 @@ def register_execution_tools(
         Returns:
             Dictionary with:
                 - protocol / addon_version: The bridge's protocol level and add-on
-                  version (the server expects protocol >= 2)
+                  version (the server expects protocol >= 3)
                 - busy: The run occupying FreeCAD's main thread (job_token,
                   running_s, code_head), or None
                 - modal_dialog: Title of the modal dialog that is open, or None
                 - queue_depth: Runs waiting their turn
                 - last_tick_age_s: Seconds since the main thread last checked in
                 - jobs_running: Timed-out runs still going
-                - auth_required, host, gui_up, instance_id
+                - auth_required, host, tls_psk (connections from other computers
+                  are possible, encrypted), gui_up, instance_id
         """
         bridge = await get_bridge()
         status = await bridge.bridge_status()

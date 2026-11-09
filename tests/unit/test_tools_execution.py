@@ -353,18 +353,55 @@ class TestPagedExecutionTools:
     async def test_execute_python_file_runs_as_main(self, tools_and_bridge, tmp_path):
         """The generated code runs the file with __file__ and __name__ set."""
         tools, bridge = tools_and_bridge
-        bridge.execute_python = AsyncMock(
-            return_value=ExecutionResult(
-                success=True, result=None, stdout="", stderr="", execution_time_ms=1
+
+        async def run(code, *_args):
+            namespace = {"FreeCAD": None, "App": None, "FreeCADGui": None, "Gui": None}
+            exec(code, namespace)  # noqa: S102 - runs the generated wrappers on a temp file
+            return ExecutionResult(
+                success=True,
+                result=namespace.get("_result_"),
+                stdout="",
+                stderr="",
+                execution_time_ms=1,
             )
-        )
+
+        bridge.execute_python = AsyncMock(side_effect=run)
         script = tmp_path / "job.py"
         script.write_text("_result_ = (__name__, __file__)\n")
-        await tools["execute_python_file"](file_path=str(script))
-        code = bridge.execute_python.call_args.args[0]
-        namespace = {"FreeCAD": None, "App": None, "FreeCADGui": None, "Gui": None}
-        exec(code, namespace)  # noqa: S102 - runs the generated wrapper on a temp file
-        assert namespace["_result_"] == ("__main__", str(script))
+        result = await tools["execute_python_file"](file_path=str(script))
+        assert result["result"] == ("__main__", str(script))
+
+    @pytest.mark.asyncio
+    async def test_execute_python_file_runs_what_was_approved(
+        self, tools_and_bridge, tmp_path, ask_before_running
+    ):
+        """The file is read before approval; a later change to it doesn't run."""
+        tools, bridge = tools_and_bridge
+        script = tmp_path / "job.py"
+        script.write_text("_result_ = 'approved'\n")
+        approved = []
+
+        async def approve(_tool, code, _detail=""):
+            approved.append(code)
+            script.write_text("_result_ = 'swapped'\n")
+            return {"decision": "allow", "scope": "once"}
+
+        async def run(code, *_args):
+            namespace = {"FreeCAD": None, "App": None, "FreeCADGui": None, "Gui": None}
+            exec(code, namespace)  # noqa: S102 - runs the generated wrappers on a temp file
+            return ExecutionResult(
+                success=True,
+                result=namespace.get("_result_"),
+                stdout="",
+                stderr="",
+                execution_time_ms=1,
+            )
+
+        bridge.request_approval = AsyncMock(side_effect=approve)
+        bridge.execute_python = AsyncMock(side_effect=run)
+        result = await tools["execute_python_file"](file_path=str(script))
+        assert approved == ["_result_ = 'approved'\n"]
+        assert result["result"] == "approved"
 
     @pytest.mark.asyncio
     async def test_bridge_status_warns_on_old_addon(self, tools_and_bridge):
@@ -373,5 +410,5 @@ class TestPagedExecutionTools:
         bridge.bridge_status = AsyncMock(return_value={"protocol": 1})
         status = await tools["bridge_status"]()
         assert "warning" in status
-        bridge.bridge_status = AsyncMock(return_value={"protocol": 2})
+        bridge.bridge_status = AsyncMock(return_value={"protocol": 3})
         assert "warning" not in await tools["bridge_status"]()

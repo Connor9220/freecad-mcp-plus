@@ -337,7 +337,7 @@ Examples:
   # Use socket mode
   FREECAD_MODE=socket freecad-mcp
 
-  # Use HTTP transport for remote access
+  # Use HTTP transport (this computer only)
   FREECAD_TRANSPORT=http FREECAD_HTTP_PORT=8080 freecad-mcp
 
   # Connect to remote FreeCAD instance
@@ -450,12 +450,11 @@ def main() -> None:
 
     # Run the server
     if config.transport == TransportType.HTTP:
-        logger.info("Starting HTTP transport on port %d", config.http_port)
-        mcp.run(  # type: ignore[call-arg]
-            transport="streamable-http",
-            host="0.0.0.0",  # noqa: S104
-            port=config.http_port,
-        )
+        # This computer only (FastMCP's default host), which also turns away requests a web
+        # page sends (Host / Origin check); other computers use stdio over ssh
+        mcp.settings.port = config.http_port
+        logger.info("Starting HTTP transport on 127.0.0.1:%d", config.http_port)
+        mcp.run(transport="streamable-http")
     else:
         logger.info("Starting stdio transport")
         logger.info(

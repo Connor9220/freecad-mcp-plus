@@ -21,8 +21,9 @@ import time
 import uuid
 from typing import Any
 
-from freecad_mcp.bridge.auth import current_token
+from freecad_mcp.bridge.auth import required_token, tls_context_for
 from freecad_mcp.bridge.base import (
+    APPROVAL_WAIT_S,
     ConnectionStatus,
     DocumentInfo,
     ExecutionResult,
@@ -32,6 +33,12 @@ from freecad_mcp.bridge.base import (
     ScreenshotResult,
     ViewAngle,
     WorkbenchInfo,
+)
+from freecad_mcp.bridge.wire import (
+    canonical,
+    require_psk_handshake,
+    response_ok,
+    sign_request,
 )
 
 DEFAULT_SOCKET_HOST = "localhost"
@@ -103,10 +110,18 @@ class SocketBridge(FreecadBridge):
             ConnectionError: If connection cannot be established.
         """
         try:
+            tls = tls_context_for(self._host, required_token(self._auth_token))
             self._reader, self._writer = await asyncio.wait_for(
-                asyncio.open_connection(self._host, self._port),
+                asyncio.open_connection(
+                    self._host,
+                    self._port,
+                    ssl=tls,
+                    server_hostname=self._host if tls else None,
+                ),
                 timeout=self._timeout,
             )
+            if tls is not None and self._writer is not None:
+                require_psk_handshake(self._writer.get_extra_info("ssl_object"))
             self._connected = True
 
             # Verify connection with a ping
@@ -145,12 +160,14 @@ class SocketBridge(FreecadBridge):
         self,
         method: str,
         params: dict[str, Any] | None = None,
+        wait_s: float | None = None,
     ) -> Any:
         """Send a JSON-RPC request and wait for response.
 
         Args:
             method: Method name to call.
             params: Method parameters.
+            wait_s: How long to wait for the answer; the bridge's timeout when None.
 
         Returns:
             Result from the JSON-RPC response.
@@ -165,15 +182,10 @@ class SocketBridge(FreecadBridge):
 
         # Build JSON-RPC request
         request_id = str(uuid.uuid4())
-        request = {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "method": method,
-            "params": params or {},
-        }
-        token = current_token(self._auth_token)
-        if token:
-            request["auth"] = token
+        core = {"id": request_id, "method": method, "params": params or {}}
+        token = required_token(self._auth_token)
+        auth = sign_request(token, canonical(core))
+        request = {"jsonrpc": "2.0", **core, "auth": auth}
 
         async with self._lock:
             try:
@@ -185,7 +197,7 @@ class SocketBridge(FreecadBridge):
                 # Read response
                 response_data = await asyncio.wait_for(
                     self._reader.readline(),
-                    timeout=self._timeout,
+                    timeout=self._timeout if wait_s is None else wait_s,
                 )
 
                 if not response_data:
@@ -194,6 +206,17 @@ class SocketBridge(FreecadBridge):
                     raise ConnectionError(msg)
 
                 response = json.loads(response_data.decode("utf-8"))
+                sig = response.pop("sig", None)
+                # An unsigned error is only a refusal; anything else must be signed
+                must_be_signed = sig is not None or "error" not in response
+                if must_be_signed and not response_ok(
+                    token, auth["nonce"], canonical(response), sig
+                ):
+                    msg = (
+                        "FreeCAD's answer isn't signed with the MCP+ token "
+                        "(wrong token, or not MCP+)"
+                    )
+                    raise ConnectionError(msg)
 
                 # Check for error
                 if "error" in response:
@@ -218,7 +241,7 @@ class SocketBridge(FreecadBridge):
                     # Try to reconnect
                     try:
                         await self.connect()
-                        return await self._send_request(method, params)
+                        return await self._send_request(method, params, wait_s)
                     except Exception:
                         pass
                 msg = f"Connection lost: {e}"
@@ -377,6 +400,16 @@ class SocketBridge(FreecadBridge):
     async def bridge_status(self) -> dict[str, Any]:
         """The bridge's own status, answered without FreeCAD's main thread."""
         return await self._send_request("status")
+
+    async def request_approval(
+        self, tool: str, code: str, detail: str = ""
+    ) -> dict[str, Any]:
+        """Ask the user in FreeCAD whether the AI's ``code`` may run (see the base class)."""
+        return await self._send_request(
+            "approve",
+            {"tool": tool, "code": code, "detail": detail},
+            wait_s=APPROVAL_WAIT_S,
+        )
 
     # =========================================================================
     # Document Management
@@ -774,8 +807,10 @@ elif view_type_str == "Left":
 elif view_type_str == "Right":
     view.viewRight()
 
-# Save to temp file and read
-with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+# Save to a scratch file in the add-on's private folder (on FreeCAD's computer) and read it
+from freecad.MCPPlus.freecad_mcp_bridge.wire import work_dir
+
+with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=work_dir()) as f:
     temp_path = f.name
 
 view.saveImage(temp_path, {width}, {height}, "Current")
@@ -906,45 +941,6 @@ _result_ = macros
         if result.success and result.result:
             return [MacroInfo(**m) for m in result.result]
         return []
-
-    async def run_macro(
-        self,
-        macro_name: str,
-        args: dict[str, Any] | None = None,
-    ) -> ExecutionResult:
-        """Run a macro by name."""
-        args = args or {}
-        code = f"""
-import os
-
-macro_name = {macro_name!r}
-macro_file = None
-
-user_path = FreeCAD.getUserMacroDir(True)
-user_macro = os.path.join(user_path, macro_name + ".FCMacro")
-if os.path.exists(user_macro):
-    macro_file = user_macro
-
-if not macro_file:
-    system_path = FreeCAD.getResourceDir() + "Macro"
-    system_macro = os.path.join(system_path, macro_name + ".FCMacro")
-    if os.path.exists(system_macro):
-        macro_file = system_macro
-
-if not macro_file:
-    raise FileNotFoundError(f"Macro not found: {{macro_name}}")
-
-args = {args!r}
-for k, v in args.items():
-    exec(f"{{k}} = {{v!r}}")
-
-with open(macro_file, "r") as f:
-    macro_code = f.read()
-
-exec(macro_code)
-_result_ = True
-"""
-        return await self.execute_python(code)
 
     async def create_macro(
         self,

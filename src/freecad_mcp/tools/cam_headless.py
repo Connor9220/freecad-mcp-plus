@@ -14,14 +14,16 @@ process from the FreeCAD source tree's own build.
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from freecad_mcp.cam import headless
+from freecad_mcp.tools.approval import require_approval
 
 
 def register_headless_tools(
     mcp: Any,
-    get_bridge: Callable[[], Awaitable[Any]],  # noqa: ARG001 - common register_* signature; these tools never use the bridge
+    get_bridge: Callable[[], Awaitable[Any]],
 ) -> None:
     """Register headless FreeCAD tools with the Robust MCP Server."""
 
@@ -35,6 +37,9 @@ def register_headless_tools(
         memory_gb: int = 8,
     ) -> dict[str, Any]:
         """Run Python in a fresh headless FreeCADCmd built from the source tree.
+
+        The user approves the code first, in the running FreeCAD's dialog; with no FreeCAD
+        running it is refused.
 
         Nothing is sent to the running FreeCAD GUI. The process runs in safe
         mode with stdin from /dev/null, niced, under a memory cap; on timeout its
@@ -57,9 +62,17 @@ def register_headless_tools(
             as repr), stdout, stderr (startup banner stripped), error (traceback,
             timeout or "no result written"), duration_s, repo.
         """
+        if file:
+            # Read now, so what runs is what the user approved
+            code = Path(file).expanduser().read_text() + ("\n" + code if code else "")
+        await require_approval(
+            get_bridge, "fc_eval", code,
+            "Runs in a separate headless FreeCADCmd." + (f" File: {file}" if file else ""),
+            runs_in_freecad=False,
+        )  # fmt: skip
         return await asyncio.to_thread(
             lambda: headless.fc_eval(
-                code=code, file=file, fcstd=fcstd, repo=repo,
+                code=code, file=None, fcstd=fcstd, repo=repo,
                 timeout_s=timeout_s, memory_gb=memory_gb,
             )
         )  # fmt: skip

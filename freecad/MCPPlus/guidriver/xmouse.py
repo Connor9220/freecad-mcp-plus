@@ -392,9 +392,6 @@ def list_item(text):
     return f
 
 
-S = "/tmp"  # screenshot dir; override per session
-
-
 def wait_idle(limit=60):
     """Call from a bridge request: pump events until the script finishes."""
     t = time.time()

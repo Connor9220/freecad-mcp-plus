@@ -181,6 +181,11 @@ class TestSocketBridgeScreenshot:
             ActiveDocument=SimpleNamespace(ActiveView=View3DInventorPy())
         )
         namespace = {"FreeCAD": freecad, "FreeCADGui": freecad_gui}
-        exec(code, namespace)  # noqa: S102 - runs the generated FreeCAD code on fakes
+        # The code imports the add-on's copy of wire.py; the server's is identical
+        from freecad_mcp.bridge import wire
+
+        addon_wire = "freecad.MCPPlus.freecad_mcp_bridge.wire"
+        with mock.patch.dict("sys.modules", {addon_wire: wire}):
+            exec(code, namespace)  # noqa: S102 - runs the generated FreeCAD code on fakes
         assert namespace["_result_"]["success"] is True
         assert namespace["_result_"]["data"] == "cG5n"

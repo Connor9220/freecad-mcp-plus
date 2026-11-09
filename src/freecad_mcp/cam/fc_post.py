@@ -579,8 +579,12 @@ def post_job(
         ext = None
     ext = (ext or "nc").lstrip(".")
     if not output:
+        from freecad.MCPPlus.freecad_mcp_bridge.wire import work_dir
+
         fd, output = tempfile.mkstemp(
-            prefix=f"{doc.Name}_{jobobj.Name}_{postprocessor}_", suffix=f".{ext}"
+            prefix=f"{doc.Name}_{jobobj.Name}_{postprocessor}_",
+            suffix=f".{ext}",
+            dir=work_dir(),
         )
         os.close(fd)
     output = os.path.abspath(os.path.expanduser(output))

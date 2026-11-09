@@ -312,15 +312,16 @@ class TestMain:
             patch.object(sys, "argv", DEFAULT_ARGV),
             patch.object(server_module, "get_config", return_value=mock_config),
             patch.object(server_module.mcp, "run") as mock_run,
+            patch.object(server_module.mcp.settings, "port", 8000),
             patch("builtins.print"),
         ):
             server_module.main()
 
-            # Should call run with HTTP transport settings
-            mock_run.assert_called_once()
-            call_kwargs = mock_run.call_args.kwargs
-            assert call_kwargs.get("transport") == "streamable-http"
-            assert call_kwargs.get("port") == 8080
+            # HTTP on the configured port, on this computer only
+            mock_run.assert_called_once_with(transport="streamable-http")
+            assert server_module.mcp.settings.port == 8080
+            assert server_module.mcp.settings.host == "127.0.0.1"
+            assert server_module.mcp.settings.transport_security.enable_dns_rebinding_protection
 
     def test_main_stdio_transport(self):
         """Main should start stdio transport by default."""

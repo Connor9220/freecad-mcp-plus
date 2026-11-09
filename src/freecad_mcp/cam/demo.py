@@ -29,6 +29,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from freecad_mcp.bridge.wire import work_dir
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -163,7 +165,9 @@ class Recorder:
     ) -> None:
         self.display, self.size, self.fps, self.path = display, size, fps, path
         self.proc: subprocess.Popen[bytes] | None = None
-        fd, name = tempfile.mkstemp(prefix="demo-ffmpeg-", suffix=".log")
+        fd, name = tempfile.mkstemp(
+            prefix="demo-ffmpeg-", suffix=".log", dir=work_dir()
+        )
         os.close(fd)
         self.log = Path(name)
         self.t_popen = 0.0

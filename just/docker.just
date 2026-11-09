@@ -49,10 +49,11 @@ build-load: setup-buildx
         -t {{image_name}} \
         --load {{project_root}}
 
-# Run the Docker container (connects to FreeCAD on host)
+# Run the Docker container (connects to FreeCAD on host with the MCP+ token, read-only)
 run:
     docker run --rm -i \
         --add-host=host.docker.internal:host-gateway \
+        -v "$HOME/.config/mcp-plus/token:/home/mcpuser/.config/mcp-plus/token:ro" \
         -e FREECAD_MODE=xmlrpc \
         -e FREECAD_SOCKET_HOST=host.docker.internal \
         {{image_name}}
@@ -61,6 +62,7 @@ run:
 run-env *args:
     docker run --rm -i \
         --add-host=host.docker.internal:host-gateway \
+        -v "$HOME/.config/mcp-plus/token:/home/mcpuser/.config/mcp-plus/token:ro" \
         {{args}} \
         {{image_name}}
 
@@ -68,6 +70,7 @@ run-env *args:
 shell:
     docker run --rm -it \
         --add-host=host.docker.internal:host-gateway \
+        -v "$HOME/.config/mcp-plus/token:/home/mcpuser/.config/mcp-plus/token:ro" \
         -e FREECAD_MODE=xmlrpc \
         -e FREECAD_SOCKET_HOST=host.docker.internal \
         --entrypoint /bin/sh \
